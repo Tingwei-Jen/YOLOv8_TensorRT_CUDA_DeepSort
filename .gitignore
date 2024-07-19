@@ -8,3 +8,8 @@ models
 
 # convert_onnx_to_engine
 convert_onnx_to_engine_cpp/build/
+
+# yolov8
+yolov8/runs/
+yolov8/yolov8n.onnx
+yolov8/yolov8n.pt
