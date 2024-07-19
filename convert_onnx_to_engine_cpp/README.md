@@ -25,5 +25,5 @@ make
     Use the following command to run the tool, replacing [onnx_path] with the path to your ONNX model and [output_engine_path] with the desired output path for the TensorRT engine:
 
 ```bash
-./convert_onnx_to_engine [onnx_path] [output_engine_path]
+./convert_onnx_to_engine [onnx_path] [output_engine_path] [max_batch_size]
 ```

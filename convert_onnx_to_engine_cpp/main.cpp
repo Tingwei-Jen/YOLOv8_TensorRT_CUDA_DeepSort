@@ -3,21 +3,21 @@
 
 int main(int argc, char* argv[])
 {
-    // 確保有兩個參數 (包含程式名稱)
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <onnx_path> <engine_path>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <onnx_path> <engine_path> <max_batch_size>" << std::endl;
         return 1;
     }
 
     // 取得 ONNX 模型和 Engine 路徑
     std::string onnxPath = argv[1];
     std::string enginePath = argv[2];
+    int maxBatchSize = std::stoi(argv[3]);
 
     // engine options
     Options options;
     options.precision = Precision::FP32;
     options.optBatchSize = 1;
-    options.maxBatchSize = 32;
+    options.maxBatchSize = maxBatchSize;
 
     // create engine
     Engine engine(options);
