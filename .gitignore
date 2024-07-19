@@ -5,3 +5,6 @@ reid/checkpoints/
 reid/runs/
 
 models
+
+# convert_onnx_to_engine
+convert_onnx_to_engine_cpp/build/
