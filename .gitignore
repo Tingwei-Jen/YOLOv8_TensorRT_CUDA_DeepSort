@@ -1,1 +1,7 @@
+# reid
 reid/class_indices.json
+reid/__pycache__/
+reid/checkpoints/
+reid/runs/
+
+models
