@@ -60,3 +60,25 @@ We save the results of TensorBoard to the `/runs` directory.
      ```bash
      tensorboard --logdir=reid/runs --host 0.0.0.0 --port 5000
      ```
+
+## Predict and Feature extraction example
+
+```python
+usage: pred.py [--img_path]
+                [--checkpoint_path]
+```
+```bash
+python pred.py --img_path [dataset/img_path.jpg] --checkpoint_path [checkpoint]
+```
+
+### Convert Resnet18reid to onnx 
+
+To conver resnet18reid model to onnx format, use the `conver_reid_to_onnx.py` script:
+
+```python
+usage: conver_reid_to_onnx.py [--checkpoint_path]
+                              [--output_onnx_path]
+```
+```bash
+python conver_reid_to_onnx.py --checkpoint_path [checkpoint] --output_onnx_path [onnx_path]
+```
