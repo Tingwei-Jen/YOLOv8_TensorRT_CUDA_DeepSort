@@ -1,0 +1,9 @@
+torch
+torchvision
+torchaudio
+tensorflow
+ultralytics
+onnx
+onnxruntime-gpu
+wheel
+flatbuffers

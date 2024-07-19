@@ -1,0 +1,100 @@
+# 使用官方的 NVIDIA CUDA 基礎映像
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+
+# 設置非互動模式，以避免安裝過程中需要手動輸入
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 更新和安裝必要的包
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    tar \
+    unzip \
+    yasm \
+    pkg-config \
+    libswscale-dev \
+    libtbb2 \
+    libtbb-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavformat-dev \
+    libpq-dev \
+    libxine2-dev \
+    libglew-dev \
+    libtiff-dev \
+    zlib1g-dev \
+    libavcodec-dev \
+    libavutil-dev \
+    libpostproc-dev \
+    libeigen3-dev \
+    libtbb-dev \
+    libgtk2.0-dev \
+    libgtk-3-dev \
+    libatlas-base-dev \
+    libgl1-mesa-glx \ 
+    gfortran \
+    g++ \
+    python3 python3-pip python3-dev python3-wheel \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 將 python 和 pip 命令指向系統中的最新 Python 3 版本
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
+    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# 升級 pip
+RUN pip install --no-cache-dir --upgrade pip
+
+# 將 requirements.txt 文件複製到容器中
+COPY requirements_opencv.txt /workspace/requirements.txt
+
+# 安裝 requirements.txt 中的所有包
+RUN pip install --no-cache-dir -r /workspace/requirements.txt
+
+# Download and extract Eigen 3.4.0
+RUN mkdir -p /usr/include/eigen3 && \
+    wget https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz && \
+    tar -xvzf eigen-3.4.0.tar.gz -C /usr/include/eigen3 --strip-components=1 && \
+    rm eigen-3.4.0.tar.gz
+
+# Clone OpenCV repository and checkout specific version (adjust version as needed)
+RUN git clone https://github.com/opencv/opencv.git /opt/opencv && \
+    cd /opt/opencv && \
+    git checkout tags/4.5.2
+
+# Clone OpenCV contrib repository and checkout specific version (adjust version as needed)
+RUN git clone https://github.com/opencv/opencv_contrib.git /opt/opencv_contrib && \
+    cd /opt/opencv_contrib && \
+    git checkout tags/4.5.2
+
+# 創建並進入構建目錄
+RUN mkdir -p /opt/opencv/build && cd /opt/opencv/build \
+    && cmake -D CMAKE_BUILD_TYPE=Release \
+    -D CMAKE_INSTALL_PREFIX=/usr/local \
+    -D OPENCV_EXTRA_MODULES_PATH=/opt/opencv_contrib/modules \
+    -D WITH_CUDA=ON \
+    -D WITH_CUDNN=ON \
+    -D CUDA_ARCH_BIN=6.1 \
+    -D CUDA_ARCH_PTX="" \
+    -D WITH_TBB=ON \
+    -D WITH_V4L=ON \
+    -D WITH_QT=OFF \
+    -D WITH_OPENGL=ON \
+    -D BUILD_EXAMPLES=OFF .. \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig
+
+# 設置工作目錄
+WORKDIR /workspace
+
+# 暴露端口 5000
+EXPOSE 5000
+
+# 預設運行的命令
+CMD ["bash"]
+
+

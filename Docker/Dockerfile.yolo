@@ -1,0 +1,76 @@
+# 使用官方的 NVIDIA CUDA 基礎映像
+FROM opencv:opencv
+
+# 將 requirements.txt 文件複製到容器中
+COPY requirements_yolo.txt /workspace/requirements.txt
+
+# 安裝 requirements.txt 中的所有包
+RUN pip install --no-cache-dir -r /workspace/requirements.txt
+
+# 下载并安装 TensorRT
+RUN wget https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/secure/8.6.1/local_repos/nv-tensorrt-local-repo-ubuntu2204-8.6.1-cuda-11.8_1.0-1_amd64.deb
+
+# Install TensorRT from .deb package
+RUN dpkg -i nv-tensorrt-local-repo-ubuntu2204-8.6.1-cuda-11.8_1.0-1_amd64.deb
+RUN cp /var/nv-tensorrt-local-repo-ubuntu2204-8.6.1-cuda-11.8/*-keyring.gpg /usr/share/keyrings/
+RUN apt-get update 
+RUN apt-get install \
+    libnvinfer8=8.6.1.6-1+cuda11.8 \
+    libnvinfer-plugin8=8.6.1.6-1+cuda11.8 \
+    libnvinfer-vc-plugin8=8.6.1.6-1+cuda11.8 \
+    libnvinfer-lean8=8.6.1.6-1+cuda11.8 \
+    libnvinfer-dispatch8=8.6.1.6-1+cuda11.8 \
+    libnvparsers8=8.6.1.6-1+cuda11.8 \
+    libnvonnxparsers8=8.6.1.6-1+cuda11.8 \
+    libnvinfer-bin=8.6.1.6-1+cuda11.8 \
+    libnvinfer-headers-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-headers-plugin-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-lean-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-plugin-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-vc-plugin-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-dispatch-dev=8.6.1.6-1+cuda11.8 \
+    libnvparsers-dev=8.6.1.6-1+cuda11.8 \
+    libnvonnxparsers-dev=8.6.1.6-1+cuda11.8 \
+    libnvinfer-samples=8.6.1.6-1+cuda11.8 \
+    python3-libnvinfer=8.6.1.6-1+cuda11.8 \
+    python3-libnvinfer-lean=8.6.1.6-1+cuda11.8 \
+    python3-libnvinfer-dispatch=8.6.1.6-1+cuda11.8 
+
+RUN apt-get install -y tensorrt=8.6.1.6-1+cuda11.8 python3-libnvinfer-dev=8.6.1.6-1+cuda11.8
+
+# 清理安装包
+RUN rm nv-tensorrt-local-repo-ubuntu2204-8.6.1-cuda-11.8_1.0-1_amd64.deb
+
+# 下載並安裝最新版本的 CMake
+RUN wget --no-check-certificate https://cmake.org/files/v3.26/cmake-3.26.0-linux-x86_64.tar.gz -O /tmp/cmake-3.26.0-linux-x86_64.tar.gz \
+    && tar -zxvf /tmp/cmake-3.26.0-linux-x86_64.tar.gz -C /opt/ \
+    && ln -sf /opt/cmake-3.26.0-linux-x86_64/bin/* /usr/bin \
+    && rm /tmp/cmake-3.26.0-linux-x86_64.tar.gz
+
+# 安裝 ONNX Runtime
+RUN git clone --recursive https://github.com/Microsoft/onnxruntime.git /opt/onnxruntime && \
+    cd /opt/onnxruntime && \
+    git checkout tags/v1.18.1 && \
+    ./build.sh \
+        --config Release \
+        --build_shared_lib \
+        --parallel \
+        --skip_tests \
+        --skip_submodule_sync \
+        --use_cuda \
+        --cuda_home /usr/local/cuda-11.8 \
+        --cudnn_home /usr/lib/x86_64-linux-gnu \
+        --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64 \
+        --allow_running_as_root \
+    && cd build/Linux/Release \ 
+    && make install
+
+# 設置工作目錄
+WORKDIR /workspace
+
+# 暴露端口 5000
+EXPOSE 5000
+
+# 預設運行的命令
+CMD ["bash"]
