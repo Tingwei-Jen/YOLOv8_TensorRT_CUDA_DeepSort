@@ -44,7 +44,7 @@ def feature_extractor(args):
 
     # image transform
     preprocess = torchvision.transforms.Compose([
-        torchvision.transforms.Resize((128, 64)), 
+        torchvision.transforms.Resize((128, 64)), # [height, width]
         torchvision.transforms.ToTensor(), 
         torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
