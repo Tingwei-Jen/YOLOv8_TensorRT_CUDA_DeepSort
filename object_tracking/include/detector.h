@@ -1,0 +1,115 @@
+#ifndef DETECTOR_H
+#define DETECTOR_H
+// cuda runtime
+#include <cuda_runtime.h>
+
+// Tensorrt
+#include "engine.h"
+
+// cuda kernel
+#include "cuda_kernel.h"
+
+// detection_gpu
+#include "detection_gpu.h"
+
+// opencv
+#include <opencv2/opencv.hpp>
+
+struct DetectorConfig {
+    // The precision to be used for inference
+    Precision precision = Precision::FP32;
+    // source image width and height
+    int imgWidth = 1280;
+    int imgHeight = 720;
+    // Probability threshold used to filter detected objects
+    float probabilityThreshold = 0.25f;
+    // Non-maximum suppression threshold
+    float nmsThreshold = 0.65f;
+    // Class thresholds (default are COCO classes)
+    std::vector<std::string> classNames = {
+        "person",         "bicycle",    "car",           "motorcycle",    "airplane",     "bus",           "train",
+        "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",    "parking meter", "bench",
+        "bird",           "cat",        "dog",           "horse",         "sheep",        "cow",           "elephant",
+        "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",     "handbag",       "tie",
+        "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball",  "kite",          "baseball bat",
+        "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",       "wine glass",    "cup",
+        "fork",           "knife",      "spoon",         "bowl",          "banana",       "apple",         "sandwich",
+        "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",        "donut",         "cake",
+        "chair",          "couch",      "potted plant",  "bed",           "dining table", "toilet",        "tv",
+        "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",   "microwave",     "oven",
+        "toaster",        "sink",       "refrigerator",  "book",          "clock",        "vase",          "scissors",
+        "teddy bear",     "hair drier", "toothbrush"};
+};
+
+class Detector{
+public:
+    /**
+     * @brief Default constructor for the Detector class.
+     */
+    Detector() = default;
+
+    /**
+     * @brief Constructor for the Detector class.
+     * @param trtModelPath The path to the TRT model.
+     * @param config The configuration for the detector.
+     */
+    Detector(const std::string& trtModelPath, const DetectorConfig& config);
+
+    /**
+     * @brief Destructor for the Detector class.
+     */
+    ~Detector();
+
+    /**
+     * @brief Performs object detection on the given image.
+     * @param cpuImg The input image for object detection.
+     * @return The detected objects.
+     */
+    DetectionGPU detect(const cv::Mat& cpuImg);
+
+private:
+    void preprocessing(const cv::Mat& cpuImg);
+    void postprocessing();
+    void testing();
+    // tensorrt engine
+    std::unique_ptr<Engine> m_trtEngine = nullptr;
+
+    // const variables
+    const float PROBABILITY_THRESHOLD;
+    const float NMS_THRESHOLD;
+    const int NUM_CLASSES;
+
+    // img size
+    int m_cpuImgWidth;
+    int m_cpuImgHeight;
+    int m_scaleImgWidth;
+    int m_scaleImgHeight;
+
+    // detecotr output size
+    int m_outputLength;  // m_nDimension * m_nAnchor
+    int m_nDimension;
+    int m_nAnchor;
+
+    // GPU buffer for preprocessing
+    unsigned char* m_gpuImgBGR;
+    unsigned char* m_gpuImgBGRA;
+    unsigned char* m_gpuResizedImgBGR;
+    unsigned char* m_gpuResizedImgRGB;
+    unsigned char* m_gpuResizedImgBlob;
+    float* m_gpuNormalizedInput;
+
+    // [batch][output][feature_vector_gpu]
+    std::vector<std::vector<float*>> m_modelOutput;   // feature_vector_gpu is [84*8400]
+    float* m_modelOutputScores;                       // [8400*80]
+
+    // detections
+    DetectionGPU m_detectionGPU;
+};
+
+
+
+
+
+
+
+#endif // DETECTOR_H

@@ -186,7 +186,7 @@ bool Engine::runInference(const std::vector<std::vector<float*>> &inputs,
         const auto &dims = m_inputDims[i];
 
         // set the input dims
-        nvinfer1::Dims4 inputDims = {batchSize, dims.d[1], dims.d[2], dims.d[3]};
+        nvinfer1::Dims4 inputDims = {batchSize, dims.d[0], dims.d[1], dims.d[2]};
         // Define the batch size
         m_context->setInputShape(m_IOTensorNames[i].c_str(), inputDims); 
 
