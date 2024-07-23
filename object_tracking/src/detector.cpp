@@ -1,4 +1,5 @@
 #include "detector.h"
+#include "tic_toc.h"
 
 Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config)
     : PROBABILITY_THRESHOLD(config.probabilityThreshold), NMS_THRESHOLD(config.nmsThreshold), NUM_CLASSES(config.classNames.size()) {
@@ -51,7 +52,16 @@ Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config
     cudaMalloc((void **)&m_modelOutputScores, NUM_CLASSES * m_nAnchor * sizeof(float));
 
     // init detections
-    m_detectionGPU.malloc(m_nAnchor);
+    cudaMalloc((void **)&m_centerX, m_nAnchor * sizeof(float));
+    cudaMalloc((void **)&m_centerY, m_nAnchor * sizeof(float));
+    cudaMalloc((void **)&m_width, m_nAnchor * sizeof(float));
+    cudaMalloc((void **)&m_height, m_nAnchor * sizeof(float));
+    cudaMalloc((void **)&m_score, m_nAnchor * sizeof(float));
+    cudaMalloc((void **)&m_classId, m_nAnchor * sizeof(int));
+    cudaMalloc((void **)&m_keep, m_nAnchor * sizeof(int));
+    cudaMalloc((void **)&m_keepIndex, m_nAnchor * sizeof(int));
+    cudaMalloc((void **)&m_numberOfKeep, sizeof(int));
+    cudaMemset(m_numberOfKeep, 0, sizeof(int));
 }
 
 Detector::~Detector() {
@@ -63,7 +73,18 @@ Detector::~Detector() {
     cudaFree(m_gpuNormalizedInput);
     cudaFree(m_modelOutput[0][0]);
     cudaFree(m_modelOutputScores);
-    m_detectionGPU.freeGpuBuffers();
+
+    // free detections
+    cudaFree(m_centerX);
+    cudaFree(m_centerY);
+    cudaFree(m_width);
+    cudaFree(m_height);
+    cudaFree(m_score);
+    cudaFree(m_classId);
+    cudaFree(m_keep);
+    cudaFree(m_keepIndex);
+    cudaFree(m_numberOfKeep);
+
     std::cout << "Detector destructor" << std::endl;
 }
 
@@ -85,8 +106,30 @@ DetectionGPU Detector::detect(const cv::Mat& cpuImg) {
     // postprocessing
     postprocessing();
 
-    return m_detectionGPU;
+    // get number of keep
+    int h_numberOfKeep;
+    cudaMemcpy(&h_numberOfKeep, m_numberOfKeep, sizeof(int), cudaMemcpyDeviceToHost);
+    // get inlier index
+    int *h_keepIndex = (int *)malloc(h_numberOfKeep * sizeof(int));
+    cudaMemcpy(h_keepIndex, m_keepIndex, h_numberOfKeep * sizeof(int), cudaMemcpyDeviceToHost);
+    
+    // copy detections
+    DetectionGPU detectionGPU;
+    detectionGPU.malloc(h_numberOfKeep);
 
+    for (int i = 0; i < h_numberOfKeep; i++) {
+        int index = h_keepIndex[i];
+        cudaMemcpy(detectionGPU.centerX.get() + i, m_centerX + index, sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(detectionGPU.centerY.get() + i, m_centerY + index, sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(detectionGPU.width.get() + i, m_width + index, sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(detectionGPU.height.get() + i, m_height + index, sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(detectionGPU.score.get() + i, m_score + index, sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(detectionGPU.classId.get() + i, m_classId + index, sizeof(int), cudaMemcpyDeviceToDevice);
+    }
+
+    free(h_keepIndex);
+    
+    return std::move(detectionGPU);
 }
 
 void Detector::preprocessing(const cv::Mat& cpuImg) {
@@ -113,30 +156,30 @@ void Detector::preprocessing(const cv::Mat& cpuImg) {
 void Detector::postprocessing() {
 
     // copy box center and size
-    cudaMemcpy(m_detectionGPU.centerX, m_modelOutput[0][0], m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_detectionGPU.centerY, m_modelOutput[0][0] + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_detectionGPU.width, m_modelOutput[0][0] + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_detectionGPU.height, m_modelOutput[0][0] + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_centerX, m_modelOutput[0][0], m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_centerY, m_modelOutput[0][0] + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_width, m_modelOutput[0][0] + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_height, m_modelOutput[0][0] + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
 
     // transpose 80*8400 to 8400*80
     matrixTranspose(m_modelOutputScores, m_modelOutput[0][0] + 4 * m_nAnchor, m_nAnchor, m_nDimension - 4);
 
     // find max scores and class id
-    findMaxAndIndex(m_detectionGPU.score, m_detectionGPU.classId, m_modelOutputScores, NUM_CLASSES, m_nAnchor);
+    findMaxAndIndex(m_score, m_classId, m_modelOutputScores, NUM_CLASSES, m_nAnchor);
     
     // scale and thresholding
     float scaleFactorX = (float)m_cpuImgWidth / m_scaleImgWidth;
     float scaleFactorY = (float)m_cpuImgHeight / m_scaleImgHeight;
     recoverScaleAndScoreThresholding(
-        m_detectionGPU.centerX, m_detectionGPU.centerY, m_detectionGPU.width, 
-        m_detectionGPU.height, m_detectionGPU.score, m_detectionGPU.keep,
+        m_centerX, m_centerY, m_width, 
+        m_height, m_score, m_keep,
         m_nAnchor, scaleFactorX, scaleFactorY, PROBABILITY_THRESHOLD);
 
     // NMS
-    nms(m_detectionGPU.keep, m_detectionGPU.centerX, m_detectionGPU.centerY, 
-        m_detectionGPU.width, m_detectionGPU.height, m_detectionGPU.score, 
+    nms(m_keep, m_centerX, m_centerY, 
+        m_width, m_height, m_score, 
         m_nAnchor, NMS_THRESHOLD);
 
     // get keep index
-    getKeepIndex(m_detectionGPU.keepIndex, m_detectionGPU.numberOfKeep, m_detectionGPU.keep, m_nAnchor);
+    getKeepIndex(m_keepIndex, m_numberOfKeep, m_keep, m_nAnchor);
 }

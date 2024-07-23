@@ -86,7 +86,6 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
                 throw std::runtime_error(msg);
             }
 
-            // Store the input dims for later use
             m_inputDims.emplace_back(tensorShape.d[1], tensorShape.d[2], tensorShape.d[3]);
             m_inputBatchSize = tensorShape.d[0];
 
@@ -97,6 +96,7 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
             for (int j = 1; j < tensorShape.nbDims; ++j) {
                 intputLength *= tensorShape.d[j];
             }
+
             m_inputLengths.push_back(intputLength);
 
             // Allocate memory for the input buffer

@@ -70,7 +70,7 @@ public:
 private:
     void preprocessing(const cv::Mat& cpuImg);
     void postprocessing();
-    void testing();
+
     // tensorrt engine
     std::unique_ptr<Engine> m_trtEngine = nullptr;
 
@@ -103,13 +103,15 @@ private:
     float* m_modelOutputScores;                       // [8400*80]
 
     // detections
-    DetectionGPU m_detectionGPU;
+    float* m_centerX;
+    float* m_centerY;
+    float* m_width;
+    float* m_height;
+    float* m_score;
+    int* m_classId;
+    int* m_keep;
+    int* m_keepIndex;
+    int* m_numberOfKeep;
 };
-
-
-
-
-
-
 
 #endif // DETECTOR_H
