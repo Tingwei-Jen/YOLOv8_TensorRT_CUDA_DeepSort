@@ -22,8 +22,8 @@ make
 
 2. **Run the Conversion Tool**
 
-    Use the following command to run the tool, replacing `[onnx_path]` with the path to your ONNX model and `[output_engine_path]` with the desired output path for the TensorRT engine. If your ONNX model is not dynamic, set `[max_batch_size]` to 1 for batch inference.
+    Use the following command to run the tool, replacing `[onnx_path]` with the path to your ONNX model and `[precision]` with the desired precision, ex 32,16. If your ONNX model is not dynamic, set `[max_batch_size]` to 1 for batch inference.
 
 ```bash
-./convert_onnx_to_engine [onnx_path] [output_engine_path] [max_batch_size]
+./convert_onnx_to_engine [onnx_path] [precision] [max_batch_size]
 ```
