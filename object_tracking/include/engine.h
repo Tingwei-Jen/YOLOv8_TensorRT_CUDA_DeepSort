@@ -13,37 +13,6 @@
 #include <iostream>
 #include "util.h"
 
-// Precision used for GPU inference
-enum class Precision {
-    // Full precision floating point value
-    FP32,
-    // Half prevision floating point value
-    FP16,
-    // Int8 quantization.
-    // Has reduced dynamic range, may result in slight loss in accuracy.
-    // If INT8 is selected, must provide path to calibration dataset directory.
-    INT8,
-};
-
-// Options for the network
-struct EngineOptions {
-    // Precision to use for GPU inference.
-    Precision precision = Precision::FP32;
-    // If INT8 precision is selected, must provide path to calibration dataset
-    // directory.
-    std::string calibrationDataDirectoryPath;
-    // The batch size to be used when computing calibration data for INT8
-    // inference. Should be set to as large a batch number as your GPU will
-    // support.
-    int32_t calibrationBatchSize = 128;
-    // The batch size which should be optimized for.
-    int32_t optBatchSize = 1;
-    // Maximum allowable batch size
-    int32_t maxBatchSize = 16;
-    // GPU device index
-    int deviceIndex = 0;
-};
-
 // Class to extend TensorRT logger
 class Logger : public nvinfer1::ILogger {
     void log(Severity severity, const char *msg) noexcept override{
@@ -53,43 +22,49 @@ class Logger : public nvinfer1::ILogger {
     }
 };
 
+// Assume model is one input and one output
 class Engine {
 public:
-    Engine(const EngineOptions &options);
+    Engine(const int32_t maxBatchSize);
     ~Engine();
 
     // Load a TensorRT engine file from disk into memory
     bool loadEngineNetwork(const std::string& trtModelPath);
 
     // Run inference.
-    // Input format [input][batch][image_data_preprocessed]   ex. [1,1,3*640*640]
-    // Output format [batch][output][feature_vector_gpu]      ex. [1,1,84*8400]
-    bool runInference(const std::vector<std::vector<float*>> &inputs,
-                      std::vector<std::vector<float*>> &outputs);
+    // Input format [batch][image_data_preprocessed]   ex. [1,3*640*640]
+    // Output format [batch][feature_vector_gpu]       ex. [1, 84*8400]
+    bool runInference(const std::vector<float*> &inputs, std::vector<float*> &outputs);
 
-    const int32_t &getInputBatchSize() const { return m_inputBatchSize; };
-    const std::vector<nvinfer1::Dims3> &getInputDims() const { return m_inputDims; };
-    const std::vector<nvinfer1::Dims> &getOutputDims() const { return m_outputDims; };
+    const int &getInputBatchSize() const { return m_inputBatchSize; };
+    const nvinfer1::Dims3 &getInputDims() const { return m_inputDims3; };
+    const nvinfer1::Dims &getOutputDims() const { return m_outputDims; };
 
 private:
-    // Clear GPU buffers
-    void clearGpuBuffers();
-
-    // Holds pointers to the input and output GPU buffers
+    // GPU buffers
     std::vector<void *> m_buffers;
-    std::vector<uint32_t> m_inputLengths{};
-    std::vector<uint32_t> m_outputLengths{};
-    std::vector<nvinfer1::Dims3> m_inputDims;    // [batch, channel, height, width]
-    std::vector<nvinfer1::Dims> m_outputDims;   // [batch, output, feature_vector_gpu]
-    std::vector<std::string> m_IOTensorNames;
-    int32_t m_inputBatchSize;                   // if dynamic, this will be -1
+    float* m_outputDevice = nullptr;
+
+    // input and output name
+    std::string m_inputTensorName;
+    std::string m_outputTensorName;    
+
+    // input and output dimensions
+    nvinfer1::Dims3 m_inputDims3;
+    int m_inputBatchSize;   
+    nvinfer1::Dims m_outputDims;
+
+    // input and output size
+    uint32_t m_inputSize;
+    uint32_t m_outputSize;
 
     // Must keep IRuntime around for inference
     std::unique_ptr<nvinfer1::IRuntime> m_runtime = nullptr;
     std::unique_ptr<nvinfer1::ICudaEngine> m_engine = nullptr;
     std::unique_ptr<nvinfer1::IExecutionContext> m_context = nullptr;
 
-    const EngineOptions m_options;
+    // Max batch size
+    const int32_t m_maxBatchSize;
     Logger m_logger;
 };
 

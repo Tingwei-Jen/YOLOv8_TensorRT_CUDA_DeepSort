@@ -7,11 +7,11 @@ Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config
     std::cout << "Detector constructor" << std::endl;
 
     // engine
-    EngineOptions engineOptions;
-    engineOptions.precision = config.precision;
-    engineOptions.optBatchSize = 1;
-    engineOptions.maxBatchSize = 1;
-    m_trtEngine = std::make_unique<Engine>(engineOptions);
+    m_trtEngine = std::make_unique<Engine>(1);
+
+    // Set the image width and height
+    m_cpuImgWidth = config.imgWidth;
+    m_cpuImgHeight = config.imgHeight;
 
     // load engine
     bool succ = m_trtEngine->loadEngineNetwork(trtModelPath);
@@ -19,14 +19,10 @@ Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config
         throw std::runtime_error("Unable to build or load TensorRT engine.");
     }
 
-    // Set the image width and height
-    m_cpuImgWidth = config.imgWidth;
-    m_cpuImgHeight = config.imgHeight;
-
     // Set the scaled image width and height
     const auto &inputDims = m_trtEngine->getInputDims();
-    m_scaleImgWidth = inputDims[0].d[2];
-    m_scaleImgHeight = inputDims[0].d[1];
+    m_scaleImgWidth = inputDims.d[2];
+    m_scaleImgHeight = inputDims.d[1];
 
     // Allocate GPU memory for the image
     cudaMalloc((void **)&m_gpuImgBGR, m_cpuImgWidth * m_cpuImgHeight * 3 * sizeof(unsigned char));
@@ -38,15 +34,9 @@ Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config
 
     // Allocate GPU memory for the output
     const auto & outputDims = m_trtEngine->getOutputDims();
-    m_nDimension = outputDims[0].d[1];
-    m_nAnchor = outputDims[0].d[2];
-    m_outputLength = m_nDimension * m_nAnchor;
-    
-    float* output;  
-    cudaMalloc((void **)&output, m_outputLength * sizeof(float));
-    std::vector<float*> outputs{std::move(output)};
-    m_modelOutput.clear();
-    m_modelOutput.push_back(std::move(outputs));
+    m_nDimension = outputDims.d[1];
+    m_nAnchor = outputDims.d[2];
+    cudaMalloc((void **)&m_modelOutput, m_nDimension * m_nAnchor * sizeof(float));
 
     // scores part of output 8400*80
     cudaMalloc((void **)&m_modelOutputScores, NUM_CLASSES * m_nAnchor * sizeof(float));
@@ -71,7 +61,7 @@ Detector::~Detector() {
     cudaFree(m_gpuResizedImgRGB);
     cudaFree(m_gpuResizedImgBlob);
     cudaFree(m_gpuNormalizedInput);
-    cudaFree(m_modelOutput[0][0]);
+    cudaFree(m_modelOutput);
     cudaFree(m_modelOutputScores);
 
     // free detections
@@ -84,21 +74,18 @@ Detector::~Detector() {
     cudaFree(m_keep);
     cudaFree(m_keepIndex);
     cudaFree(m_numberOfKeep);
-
     std::cout << "Detector destructor" << std::endl;
 }
 
-DetectionGPU Detector::detect(const cv::Mat& cpuImg) {
+std::vector<DetectionInfer> Detector::detect(const cv::Mat& cpuImg) {
 
     // preprocssing
     preprocessing(cpuImg);
 
     // inference
-    std::vector<float*> input;
-    input.push_back(m_gpuNormalizedInput);
-    std::vector<std::vector<float*>> inputs{std::move(input)};
-
-    auto succ = m_trtEngine->runInference(inputs, m_modelOutput);
+    std::vector<float*> input{m_gpuNormalizedInput};
+    std::vector<float*> output{m_modelOutput};
+    auto succ = m_trtEngine->runInference(input, output);
     if (!succ) {
         throw std::runtime_error("Error: Unable to run inference.");
     }
@@ -109,31 +96,41 @@ DetectionGPU Detector::detect(const cv::Mat& cpuImg) {
     // get number of keep
     int h_numberOfKeep;
     cudaMemcpy(&h_numberOfKeep, m_numberOfKeep, sizeof(int), cudaMemcpyDeviceToHost);
+    
     // get inlier index
     int *h_keepIndex = (int *)malloc(h_numberOfKeep * sizeof(int));
     cudaMemcpy(h_keepIndex, m_keepIndex, h_numberOfKeep * sizeof(int), cudaMemcpyDeviceToHost);
     
-    // copy detections
-    DetectionGPU detectionGPU;
-    detectionGPU.malloc(h_numberOfKeep);
+    // output detections
+    std::vector<DetectionInfer> detections(h_numberOfKeep);
 
     for (int i = 0; i < h_numberOfKeep; i++) {
         int index = h_keepIndex[i];
-        cudaMemcpy(detectionGPU.centerX.get() + i, m_centerX + index, sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(detectionGPU.centerY.get() + i, m_centerY + index, sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(detectionGPU.width.get() + i, m_width + index, sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(detectionGPU.height.get() + i, m_height + index, sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(detectionGPU.score.get() + i, m_score + index, sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(detectionGPU.classId.get() + i, m_classId + index, sizeof(int), cudaMemcpyDeviceToDevice);
+        float centerX;
+        float centerY;
+        float width;
+        float height;
+        float score;
+        int classId; 
+        cudaMemcpy(&centerX, m_centerX + index, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&centerY, m_centerY + index, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&width, m_width + index, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&height, m_height + index, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&score, m_score + index, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&classId, m_classId + index, sizeof(int), cudaMemcpyDeviceToHost);
+        float tlx = centerX - 0.5 * width;
+        float tly = centerY - 0.5 * height;
+        checkBoundry(tlx, tly, width, height);
+        detections[i] = DetectionInfer(Eigen::Vector4f(tlx, tly, width, height), score, classId);
     }
 
     free(h_keepIndex);
     
-    return std::move(detectionGPU);
+    return detections;
 }
 
 void Detector::preprocessing(const cv::Mat& cpuImg) {
-    
+
     // step1. upload the image to GPU memory
     cudaMemcpy(m_gpuImgBGR, cpuImg.data, m_cpuImgWidth * m_cpuImgHeight * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
 
@@ -150,19 +147,19 @@ void Detector::preprocessing(const cv::Mat& cpuImg) {
     blob(m_gpuResizedImgBlob, m_gpuResizedImgRGB, m_scaleImgWidth, m_scaleImgHeight);
 
     // step6. normalize
-    normalize(m_gpuNormalizedInput, m_gpuResizedImgBlob, m_scaleImgWidth, m_scaleImgHeight);
+    normalize(m_gpuNormalizedInput, m_gpuResizedImgBlob, m_scaleImgWidth * m_scaleImgHeight * 3);
 }
 
 void Detector::postprocessing() {
 
     // copy box center and size
-    cudaMemcpy(m_centerX, m_modelOutput[0][0], m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_centerY, m_modelOutput[0][0] + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_width, m_modelOutput[0][0] + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_height, m_modelOutput[0][0] + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_centerX, m_modelOutput, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_centerY, m_modelOutput + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_width, m_modelOutput + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_height, m_modelOutput + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
 
     // transpose 80*8400 to 8400*80
-    matrixTranspose(m_modelOutputScores, m_modelOutput[0][0] + 4 * m_nAnchor, m_nAnchor, m_nDimension - 4);
+    matrixTranspose(m_modelOutputScores, m_modelOutput + 4 * m_nAnchor, m_nAnchor, m_nDimension - 4);
 
     // find max scores and class id
     findMaxAndIndex(m_score, m_classId, m_modelOutputScores, NUM_CLASSES, m_nAnchor);
@@ -182,4 +179,27 @@ void Detector::postprocessing() {
 
     // get keep index
     getKeepIndex(m_keepIndex, m_numberOfKeep, m_keep, m_nAnchor);
+}
+
+void Detector::checkBoundry(float &tlx, float &tly, float &width, float &height) {
+    if (tlx < 0) {
+        width = width + tlx;
+        tlx = 0;
+    }
+    if (tly < 0) {
+        height = height + tly;
+        tly = 0;
+    }
+    if (tlx == m_cpuImgWidth) {
+        width = 0;
+    }
+    if (tly == m_cpuImgHeight) {
+        height = 0;
+    }
+    if (tlx + width > m_cpuImgWidth) {
+        width = m_cpuImgWidth - tlx;
+    }
+    if (tly + height > m_cpuImgHeight) {
+        height = m_cpuImgHeight - tly;
+    }
 }

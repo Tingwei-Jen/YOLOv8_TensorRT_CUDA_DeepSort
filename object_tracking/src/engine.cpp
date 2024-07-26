@@ -1,9 +1,11 @@
 #include "engine.h"
 
-Engine::Engine(const EngineOptions &options): m_options(options){}
-Engine::~Engine()
-{
-    clearGpuBuffers();
+Engine::Engine(const int32_t maxBatchSize): m_maxBatchSize(maxBatchSize){
+    m_buffers.clear();
+    m_buffers.resize(2);
+}
+Engine::~Engine() {
+    cudaFree(m_outputDevice);
 }
 
 bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
@@ -33,11 +35,11 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
     }
 
     // Set the device index
-    auto ret = cudaSetDevice(m_options.deviceIndex);
+    auto ret = cudaSetDevice(0);
     if (ret != 0) {
         int numGPUs;
         cudaGetDeviceCount(&numGPUs);
-        auto errMsg = "Unable to set GPU device index to: " + std::to_string(m_options.deviceIndex) + ". Note, your device has " +
+        auto errMsg = "Unable to set GPU device index to: " + std::to_string(0) + ". Note, your device has " +
                       std::to_string(numGPUs) + " CUDA-capable GPU(s).";
         throw std::runtime_error(errMsg);
     }
@@ -55,153 +57,79 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
         return false;
     }
 
-    // Storage for holding the input and output buffers
-    // This will be passed to TensorRT for inference
-    clearGpuBuffers();
-    m_buffers.resize(m_engine->getNbIOTensors());
+    // Get the input and output tensor names
+    m_inputTensorName = m_engine->getIOTensorName(0);
+    m_outputTensorName = m_engine->getIOTensorName(1);
 
-    // Clear the input and output
-    m_inputLengths.clear();
-    m_outputLengths.clear();
-    m_inputDims.clear();
-    m_outputDims.clear();
-    m_IOTensorNames.clear();
+    // Get the input and output tensor dimensions
+    auto tensorShapeInput = m_engine->getTensorShape(m_inputTensorName.c_str());
+    m_inputDims3 = {tensorShapeInput.d[1], tensorShapeInput.d[2], tensorShapeInput.d[3]};
+    m_inputBatchSize = tensorShapeInput.d[0];   
 
-    // Create a cuda stream
-    cudaStream_t stream;
-    Util::checkCudaErrorCode(cudaStreamCreate(&stream));
-
-    // Allocate GPU memory for input and output buffers
-    for (int i = 0; i < m_engine->getNbIOTensors(); ++i) {
-        const auto tensorName = m_engine->getIOTensorName(i);
-        m_IOTensorNames.emplace_back(tensorName);
-        const auto tensorType = m_engine->getTensorIOMode(tensorName);
-        const auto tensorShape = m_engine->getTensorShape(tensorName);
-        const auto tensorDataType = m_engine->getTensorDataType(tensorName);
-
-        if (tensorType == nvinfer1::TensorIOMode::kINPUT) {
-            // The implementation currently only supports inputs of type float
-            if (m_engine->getTensorDataType(tensorName) != nvinfer1::DataType::kFLOAT) {
-                auto msg = "Error, the implementation currently only supports float inputs";
-                throw std::runtime_error(msg);
-            }
-
-            m_inputDims.emplace_back(tensorShape.d[1], tensorShape.d[2], tensorShape.d[3]);
-            m_inputBatchSize = tensorShape.d[0];
-
-            // Calculate the length of the input buffer
-            // We ignore j = 0 because that is the batch size, and it perhaps equals "-1" due to dynamic batch size
-            // We will take that into account when sizing the buffer
-            uint32_t intputLength = 1;
-            for (int j = 1; j < tensorShape.nbDims; ++j) {
-                intputLength *= tensorShape.d[j];
-            }
-
-            m_inputLengths.push_back(intputLength);
-
-            // Allocate memory for the input buffer
-            Util::checkCudaErrorCode(cudaMallocAsync(&m_buffers[i], intputLength * m_options.maxBatchSize * sizeof(float), stream));
-
-        } else if (tensorType == nvinfer1::TensorIOMode::kOUTPUT) {
-
-            // Store the output dims for later use
-            m_outputDims.push_back(tensorShape);
-
-            // The binding is an output
-            uint32_t outputLength = 1;
-            for (int j = 1; j < tensorShape.nbDims; ++j) {
-                // We ignore j = 0 because that is the batch size, and we will take that
-                // into account when sizing the buffer
-                outputLength *= tensorShape.d[j];
-            }
-            m_outputLengths.push_back(outputLength);
-
-            // Now size the output buffer appropriately, taking into account the max
-            // possible batch size (although we could actually end up using less
-            // memory)
-            Util::checkCudaErrorCode(cudaMallocAsync(&m_buffers[i], outputLength * m_options.maxBatchSize * sizeof(float), stream));
-        } 
+    m_inputSize = 1;
+    for (int j = 0; j < 3; ++j) {
+        m_inputSize *= m_inputDims3.d[j];
     }
 
-    // Synchronize and destroy the cuda stream
-    Util::checkCudaErrorCode(cudaStreamSynchronize(stream));
-    Util::checkCudaErrorCode(cudaStreamDestroy(stream));
+    m_outputDims = m_engine->getTensorShape(m_outputTensorName.c_str());
+
+    m_outputSize = 1;
+    for (int j = 1; j < m_outputDims.nbDims; ++j) {
+        m_outputSize *= m_outputDims.d[j];
+    }
+
+    // allocate output device memory
+    Util::checkCudaErrorCode(cudaMalloc(&m_outputDevice, m_maxBatchSize * m_outputSize * sizeof(float)));
 
     return true;
 }
 
-bool Engine::runInference(const std::vector<std::vector<float*>> &inputs,
-                          std::vector<std::vector<float*>> &outputs) {
+bool Engine::runInference(const std::vector<float*> &inputs, std::vector<float*> &outputs) {
 
     // First we do some error checking
-    if (inputs.empty() || inputs[0].empty()) {
+    if (inputs.empty()) {
         std::cout << "===== Error =====" << std::endl;
         std::cout << "Provided input vector is empty!" << std::endl;
         return false;
     }
 
-    const auto numInputs = m_inputDims.size();
-    if (inputs.size() != numInputs) {
-        std::cout << "===== Error =====" << std::endl;
-        std::cout << "Incorrect number of inputs provided!" << std::endl;
-        return false;
-    }
-
     // Ensure the batch size does not exceed the max
-    if (inputs[0].size() > static_cast<size_t>(m_options.maxBatchSize)) {
+    if (inputs.size() > static_cast<size_t>(m_maxBatchSize)) {
         std::cout << "===== Error =====" << std::endl;
         std::cout << "The batch size is larger than the model expects!" << std::endl;
-        std::cout << "Model max batch size: " << m_options.maxBatchSize << std::endl;
-        std::cout << "Batch size provided to call to runInference: " << inputs[0].size() << std::endl;
+        std::cout << "Model max batch size: " << m_maxBatchSize << std::endl;
+        std::cout << "Batch size provided to call to runInference: " << inputs.size() << std::endl;
         return false;
     }
 
     // Ensure that if the model has a fixed batch size that is greater than 1, the
     // input has the correct length
-    if (m_inputBatchSize != -1 && inputs[0].size() != static_cast<size_t>(m_inputBatchSize)) {
+    if (m_inputBatchSize != -1 && inputs.size() != static_cast<size_t>(m_inputBatchSize)) {
         std::cout << "===== Error =====" << std::endl;
         std::cout << "The batch size is different from what the model expects!" << std::endl;
         std::cout << "Model batch size: " << m_inputBatchSize << std::endl;
-        std::cout << "Batch size provided to call to runInference: " << inputs[0].size() << std::endl;
+        std::cout << "Batch size provided to call to runInference: " << inputs.size() << std::endl;
         return false;
     }
 
-    const auto batchSize = static_cast<int32_t>(inputs[0].size());
-    // Make sure the same batch size was provided for all inputs
-    for (size_t i = 1; i < inputs.size(); ++i) {
-        if (inputs[i].size() != static_cast<size_t>(batchSize)) {
-            std::cout << "===== Error =====" << std::endl;
-            std::cout << "The batch size needs to be constant for all inputs!" << std::endl;
-            return false;
-        }
+    // binding input dimensions
+    const auto batchSize = static_cast<int32_t>(inputs.size());
+    nvinfer1::Dims4 inputDims = {batchSize, m_inputDims3.d[0], m_inputDims3.d[1], m_inputDims3.d[2]};
+    int bindingIndex = m_engine->getBindingIndex(m_inputTensorName.c_str());
+    m_context->setBindingDimensions(bindingIndex, inputDims);
+
+    // set input tensor
+    float* inputDevice;
+    Util::checkCudaErrorCode(cudaMalloc(&inputDevice, batchSize * m_inputSize * sizeof(float)));
+
+    // copy input data to device
+    for (int i = 0; i < batchSize; ++i) {
+        cudaMemcpy(inputDevice + i * m_inputSize, inputs[i], m_inputSize * sizeof(float), cudaMemcpyDeviceToDevice);
     }
 
-    // Create the cuda stream that will be used for inference
-    cudaStream_t inferenceCudaStream;
-    Util::checkCudaErrorCode(cudaStreamCreate(&inferenceCudaStream));
-
-    // set the input tensors
-    for (size_t i = 0; i < numInputs; ++i) {
-        const auto &batchInput = inputs[i];
-        const auto &dims = m_inputDims[i];
-
-        // set the input dims
-        nvinfer1::Dims4 inputDims = {batchSize, dims.d[0], dims.d[1], dims.d[2]};
-        // Define the batch size
-        m_context->setInputShape(m_IOTensorNames[i].c_str(), inputDims); 
-
-        // combine image data in batch into one buffer
-        size_t imgSize = m_inputLengths[i];
-        float* batchInputPtr;
-        cudaMalloc(&batchInputPtr, batchSize * imgSize * sizeof(float));
-
-        for (int j = 0; j < batchSize; ++j) {
-            cudaMemcpy(batchInputPtr + j * imgSize, batchInput[j], imgSize * sizeof(float), cudaMemcpyDeviceToDevice);
-        }
-
-        // copy the batch data to buffer
-        Util::checkCudaErrorCode(cudaMemcpyAsync(m_buffers[i], static_cast<void*>(batchInputPtr), batchSize * imgSize * sizeof(float), cudaMemcpyDeviceToDevice));
-    }
+    // binding output dimensions
+    m_buffers[0] = inputDevice;
+    m_buffers[1] = m_outputDevice;
 
     // Ensure all dynamic bindings have been defined.
     if (!m_context->allInputDimensionsSpecified()) {
@@ -210,12 +138,12 @@ bool Engine::runInference(const std::vector<std::vector<float*>> &inputs,
     }
 
     // Set the address of the input and output buffers
-    for (size_t i = 0; i < m_buffers.size(); ++i) {
-        bool status = m_context->setTensorAddress(m_IOTensorNames[i].c_str(), m_buffers[i]);
-        if (!status) {
-            return false;
-        }
-    }
+    m_context->setTensorAddress(m_inputTensorName.c_str(), m_buffers[0]);
+    m_context->setTensorAddress(m_outputTensorName.c_str(), m_buffers[1]);
+
+    // Create the cuda stream that will be used for inference
+    cudaStream_t inferenceCudaStream;
+    Util::checkCudaErrorCode(cudaStreamCreate(&inferenceCudaStream));
 
     // Run inference.
     bool status = m_context->enqueueV3(inferenceCudaStream);
@@ -223,33 +151,15 @@ bool Engine::runInference(const std::vector<std::vector<float*>> &inputs,
         return false;
     }
 
-    // Copy the outputs
-    for (int batch = 0; batch < batchSize; ++batch) {
-        for (int32_t outputBinding = numInputs; outputBinding < m_engine->getNbIOTensors(); ++outputBinding) {
-            
-            auto outputLength = m_outputLengths[outputBinding - numInputs];
-
-            // Copy the output
-            Util::checkCudaErrorCode(cudaMemcpyAsync(outputs[batch][outputBinding - numInputs],
-                                                     static_cast<float *>(m_buffers[outputBinding]) + (batch * outputLength),
-                                                     outputLength * sizeof(float), cudaMemcpyDeviceToDevice, inferenceCudaStream));
-        }
+    // copy the outputs
+    for (int i = 0; i < batchSize; ++i) {
+        cudaMemcpy(outputs[i], m_buffers[1] + i * m_outputSize, m_outputSize * sizeof(float), cudaMemcpyDeviceToDevice);
     }
 
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
     Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
+    cudaFree(inputDevice);
 
     return true;
-
-}
-
-void Engine::clearGpuBuffers() {
-    if (!m_buffers.empty()) {
-        // Free GPU memory of buffer
-        for (int32_t i = 0; i < m_engine->getNbIOTensors(); ++i) {
-            Util::checkCudaErrorCode(cudaFree(m_buffers[i]));
-        }
-        m_buffers.clear();
-    }
 }

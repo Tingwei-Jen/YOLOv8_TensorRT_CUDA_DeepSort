@@ -10,14 +10,12 @@
 #include "cuda_kernel.h"
 
 // detection_gpu
-#include "detection_gpu.h"
+#include "detection_infer.h"
 
 // opencv
 #include <opencv2/opencv.hpp>
 
 struct DetectorConfig {
-    // The precision to be used for inference
-    Precision precision = Precision::FP32;
     // source image width and height
     int imgWidth = 1280;
     int imgHeight = 720;
@@ -60,16 +58,17 @@ public:
      */
     ~Detector();
 
-    /**
-     * @brief Performs object detection on the given image.
-     * @param cpuImg The input image for object detection.
-     * @return The detected objects.
-     */
-    DetectionGPU detect(const cv::Mat& cpuImg);
+    // /**
+    //  * @brief Performs object detection on the given image.
+    //  * @param cpuImg The input image for object detection.
+    //  * @return The detected objects.
+    //  */
+    std::vector<DetectionInfer> detect(const cv::Mat& cpuImg);
 
 private:
     void preprocessing(const cv::Mat& cpuImg);
     void postprocessing();
+    void checkBoundry(float &tlx, float &tly, float &width, float &height);
 
     // tensorrt engine
     std::unique_ptr<Engine> m_trtEngine = nullptr;
@@ -86,7 +85,6 @@ private:
     int m_scaleImgHeight;
 
     // detecotr output size
-    int m_outputLength;  // m_nDimension * m_nAnchor
     int m_nDimension;
     int m_nAnchor;
 
@@ -98,9 +96,10 @@ private:
     unsigned char* m_gpuResizedImgBlob;
     float* m_gpuNormalizedInput;
 
-    // [batch][output][feature_vector_gpu]
-    std::vector<std::vector<float*>> m_modelOutput;   // feature_vector_gpu is [84*8400]
-    float* m_modelOutputScores;                       // [8400*80]
+    // [feature_vector_gpu] [84*8400]
+    float* m_modelOutput;
+    // [8400*80]
+    float* m_modelOutputScores;
 
     // detections
     float* m_centerX;
