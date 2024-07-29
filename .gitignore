@@ -13,3 +13,8 @@ convert_onnx_to_engine_cpp/build/
 yolov8/runs/
 yolov8/yolov8n.onnx
 yolov8/yolov8n.pt
+
+# object tracking
+object_tracking/build/
+object_tracking/result/img_det/
+object_tracking/result/tracker_result.txt
