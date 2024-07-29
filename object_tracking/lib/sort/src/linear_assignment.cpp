@@ -2,7 +2,7 @@
 
 void LinearAssignment::min_cost_matching_iou(
     const std::vector<Track>& predicted_tracks, 
-    const std::vector<Detection>& detections,
+    const std::vector<DetectionSort>& detections,
     const std::vector<int>& track_indices,
     const std::vector<int>& detection_indices,
     const float& max_matching_threshold, 
@@ -78,7 +78,7 @@ void LinearAssignment::min_cost_matching_iou(
 
 void LinearAssignment::min_cost_matching_cascade(
     const std::vector<Track>& predicted_tracks, 
-    const std::vector<Detection>& detections,
+    const std::vector<DetectionSort>& detections,
     const std::vector<int>& track_indices,
     const std::vector<int>& detection_indices,
     const float& max_matching_threshold, 

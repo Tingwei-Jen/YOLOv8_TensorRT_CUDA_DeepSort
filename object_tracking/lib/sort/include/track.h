@@ -5,7 +5,7 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include <vector>
-#include "detection.h"
+#include "detection_sort.h"
 #include "kalman_filter.h"
 
 enum class TrackState
@@ -40,7 +40,9 @@ public:
           const int& track_id, 
           const int& n_init,
           const int& max_age,
-          const Eigen::VectorXf& feature = Eigen::VectorXf());
+          const Eigen::VectorXf& feature = Eigen::VectorXf(),
+          const int& cls = 0,
+          const float& confidence = 0.0);
     
     /**
      * @brief Get current position in bounding box format (top left x, top left y, width, height)
@@ -66,7 +68,7 @@ public:
      * @brief  Perform Kalman filter measurement update step and update the feature cache.
      * 
     */
-    void update(const Detection& detection, KalmanFilter& kf);
+    void update(const DetectionSort& detection, KalmanFilter& kf);
     
     void mark_missed();
     bool is_tentative() const;
@@ -81,6 +83,9 @@ public:
     std::vector<Eigen::VectorXf> features() const;
     void clean_features();
 
+    int cls() const;
+    float confidence() const;
+
 private:
     Eigen::VectorXf m_state; /**< 8*1 Mean vector of the initial state distribution. */
     Eigen::MatrixXf m_covariance; /**< 8*8 Covariance matrix of the initial state distribution. */
@@ -92,6 +97,9 @@ private:
     int m_age; /**<  Total number of frames since first occurance. */
     int m_time_since_update; /**< Total number of frames since last measurement update. */
     TrackState m_track_state;
+
+    int m_cls;
+    float m_confidence;
 };
 
 #endif // TRACK_HPP

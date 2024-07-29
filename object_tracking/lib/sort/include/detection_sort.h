@@ -1,16 +1,14 @@
-// detection.hpp
-#ifndef DETECTION_HPP
-#define DETECTION_HPP
-
+#ifndef DETECTION_SORT_H
+#define DETECTION_SORT_H
 #include <Eigen/Dense>
 
-class Detection
+class DetectionSort
 {
 public:
     /**
      * @brief Default constructor for the Detection class.
      */
-    Detection() = default;
+    DetectionSort() = default;
 
     /**
      * @brief Constructor for the Detection class.
@@ -18,7 +16,7 @@ public:
      * @param confidence The confidence score of the detection.
      * @param feature The feature vector associated with the detection (optional).
      */
-    Detection(const Eigen::Vector4f& tlwh, const float& confidence, const int& cls, const Eigen::VectorXf& feature = Eigen::VectorXf())
+    DetectionSort(const Eigen::Vector4f& tlwh, const float& confidence, const int& cls, const Eigen::VectorXf& feature = Eigen::VectorXf())
         : m_tlwh(tlwh), m_confidence(confidence), m_cls(cls), m_feature(feature) {}
 
     /**
@@ -69,4 +67,4 @@ private:
     Eigen::VectorXf m_feature;       // Feature vector associated with the detection
 };
 
-#endif // DETECTION_HPP
+#endif // DETECTION_SORT_H

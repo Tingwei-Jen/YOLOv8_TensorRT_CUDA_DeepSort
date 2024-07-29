@@ -5,7 +5,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include "track.h"
-#include "detection.h"
+#include "detection_sort.h"
 
 class IOUMatching
 {
@@ -21,7 +21,7 @@ public:
      * @return The IoU cost matrix as an Eigen::MatrixXf.
      */
     static Eigen::MatrixXf iou_cost(const std::vector<Track>& tracks, 
-                                    const std::vector<Detection>& detections,
+                                    const std::vector<DetectionSort>& detections,
                                     const std::vector<int>& track_indices,
                                     const std::vector<int>& detection_indices);
 

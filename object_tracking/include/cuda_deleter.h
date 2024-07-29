@@ -36,4 +36,4 @@ struct CudaDeleter {
     }
 };
 
-#endif // DETECTOR_H
+#endif // CUDA_DELETER_H

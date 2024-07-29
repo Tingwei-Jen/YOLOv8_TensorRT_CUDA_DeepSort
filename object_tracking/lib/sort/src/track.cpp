@@ -5,7 +5,9 @@ Track::Track(const Eigen::VectorXf& state,
              const int& track_id, 
              const int& n_init,
              const int& max_age,
-             const Eigen::VectorXf& feature)
+             const Eigen::VectorXf& feature,
+             const int& cls,
+             const float& confidence)
     : m_state(state),
       m_covariance(covariance),
       m_track_id(track_id), 
@@ -14,7 +16,9 @@ Track::Track(const Eigen::VectorXf& state,
       m_hits(1),
       m_age(1),
       m_time_since_update(0), 
-      m_track_state(TrackState::Tentative)
+      m_track_state(TrackState::Tentative),
+      m_cls(cls),
+      m_confidence(confidence)
 {
     if (feature.size() > 0) {
         m_features.push_back(feature);
@@ -58,7 +62,7 @@ void Track::predict(KalmanFilter& kf)
     m_time_since_update += 1;
 }
 
-void Track::update(const Detection& detection, KalmanFilter& kf)
+void Track::update(const DetectionSort& detection, KalmanFilter& kf)
 {
     // Perform Kalman filter update
     Eigen::VectorXf update_mean;
@@ -128,4 +132,12 @@ std::vector<Eigen::VectorXf> Track::features() const
 void Track::clean_features()
 {
     m_features.clear();
+}
+
+int Track::cls() const {
+    return m_cls;
+}
+
+float Track::confidence() const {
+    return m_confidence;
 }

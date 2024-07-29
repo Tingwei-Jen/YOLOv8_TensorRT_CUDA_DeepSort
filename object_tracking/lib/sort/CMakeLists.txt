@@ -21,8 +21,7 @@ add_library (${PROJECT_NAME} STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/nn_matching.cpp 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hungarian.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/linear_assignment.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tracker.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/detector.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tracker.cpp)
 
 # Include directories for OpenCV and Eigen
 target_include_directories(${PROJECT_NAME} 

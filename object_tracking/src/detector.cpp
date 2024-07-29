@@ -123,7 +123,7 @@ std::vector<DetectionInfer> Detector::detect(const cv::Mat& cpuImg) {
     // get inlier index
     int *h_keepIndex = new int[h_numberOfKeep];
     cudaMemcpy(h_keepIndex, m_cudaKeepIdxPtr.get(), h_numberOfKeep * sizeof(int), cudaMemcpyDeviceToHost);
-    
+
     // output detections
     std::vector<DetectionInfer> detections(h_numberOfKeep);
 
@@ -193,7 +193,7 @@ void Detector::postprocessing() {
 
     // find max scores and class id
     findMaxAndIndex(m_cudaScorePtr.get(), m_cudaClassIdPtr.get(), m_cudaModelOutputScoresPtr.get(), NUM_CLASSES, m_nAnchor);
-    
+
     // scale and thresholding
     float scaleFactorX = (float)m_cpuImgWidth / m_scaleImgWidth;
     float scaleFactorY = (float)m_cpuImgHeight / m_scaleImgHeight;
@@ -210,6 +210,8 @@ void Detector::postprocessing() {
         m_nAnchor, NMS_THRESHOLD);
 
     // get keep index
+    // reset keep index
+    cudaMemset(m_cudaNumberOfKeepPtr.get(), 0, sizeof(int));
     getKeepIndex(m_cudaKeepIdxPtr.get(), m_cudaNumberOfKeepPtr.get(), m_cudaKeepPtr.get(), m_nAnchor);
 }
 

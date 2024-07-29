@@ -15,35 +15,13 @@ void Tracker::predict()
     }
 }
 
-void Tracker::update(const std::vector<Detection>& detections)
+void Tracker::update(const std::vector<DetectionSort>& detections)
 {
-    std::cout << "update function:---- " << std::endl;
-    std::cout << "m_tracks size: " << m_tracks.size() << std::endl;
-    std::cout << "detections size: " << detections.size() << std::endl;
     // Run matching cascade.
     std::vector<std::pair<int, int>> matches;
     std::vector<int> unmatched_tracks_idx;
     std::vector<int> unmatched_detections_idx;
     match(detections, matches, unmatched_tracks_idx, unmatched_detections_idx);
-
-    std::cout << "after match:---- " << std::endl;
-    std::cout << "matches: ";
-    for (const auto& match: matches) {
-        std::cout << "(" << match.first << ", " << match.second << ") ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "unmatched_tracks_idx: ";
-    for (auto idx: unmatched_tracks_idx) {
-        std::cout << idx << " ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "unmatched_detections_idx: ";
-    for (auto idx: unmatched_detections_idx) {
-        std::cout << idx << " ";
-    }
-    std::cout << std::endl;
 
     // matches
     for (auto& match: matches) {
@@ -83,7 +61,7 @@ void Tracker::update(const std::vector<Detection>& detections)
     m_nn_matching.update_observations(map_active_targets_featurs);
 }
 
-void Tracker::match(const std::vector<Detection>& detections,
+void Tracker::match(const std::vector<DetectionSort>& detections,
                     std::vector<std::pair<int, int>>& matches, 
                     std::vector<int>& unmatched_tracks_idx, 
                     std::vector<int>& unmatched_detections_idx)
@@ -164,7 +142,7 @@ void Tracker::match(const std::vector<Detection>& detections,
     unmatched_detections_idx = unmatched_detections_idx_b;
 }
 
-void Tracker::initiate_track(const Detection& detection)
+void Tracker::initiate_track(const DetectionSort& detection)
 {
     // Initialize Kalman filter of state with detection information
     Eigen::VectorXf mean;

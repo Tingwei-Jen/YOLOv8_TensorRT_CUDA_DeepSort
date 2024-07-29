@@ -6,7 +6,7 @@
 #include <vector>
 #include "hungarian.h"
 #include "track.h"
-#include "detection.h"
+#include "detection_sort.h"
 #include "iou_matching.h"
 #include "nn_matching.h"
 #include "kalman_filter.h"
@@ -30,7 +30,7 @@ public:
      * @param unmatched_detection_indices The vector to store the indices of unmatched detections.
      */
     static void min_cost_matching_iou(const std::vector<Track>& predicted_tracks, 
-                                      const std::vector<Detection>& detections,
+                                      const std::vector<DetectionSort>& detections,
                                       const std::vector<int>& track_indices,
                                       const std::vector<int>& detection_indices,
                                       const float& max_matching_threshold, 
@@ -53,7 +53,7 @@ public:
      * @param unmatched_detection_indices The vector to store the indices of unmatched detections.
      */
     static void min_cost_matching_cascade(const std::vector<Track>& predicted_tracks, 
-                                          const std::vector<Detection>& detections,
+                                          const std::vector<DetectionSort>& detections,
                                           const std::vector<int>& track_indices,
                                           const std::vector<int>& detection_indices,
                                           const float& max_matching_threshold, 

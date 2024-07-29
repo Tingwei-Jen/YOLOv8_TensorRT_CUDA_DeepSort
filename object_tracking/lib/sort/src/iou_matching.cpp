@@ -6,7 +6,7 @@
 
 Eigen::MatrixXf IOUMatching::iou_cost(
     const std::vector<Track>& tracks, 
-    const std::vector<Detection>& detections,
+    const std::vector<DetectionSort>& detections,
     const std::vector<int>& track_indices, 
     const std::vector<int>& detection_indices)
 {

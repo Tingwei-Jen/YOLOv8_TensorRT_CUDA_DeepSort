@@ -4,7 +4,7 @@
 
 #include <Eigen/Dense>
 #include <vector>
-#include "detection.h"
+#include "detection_sort.h"
 #include "track.h"
 #include "kalman_filter.h"
 #include "nn_matching.h"
@@ -43,7 +43,7 @@ public:
      *
      * @param detections The vector of detections to update the tracker with.
      */
-    void update(const std::vector<Detection>& detections);
+    void update(const std::vector<DetectionSort>& detections);
 
 
     /**
@@ -62,12 +62,12 @@ private:
      * @param unmatched_tracks_idx The vector to store the indices of m_tracks that have no match.
      * @param unmatched_detections_idx The vector to store the indices of detections that have no match.
      */
-    void match(const std::vector<Detection>& detections,
+    void match(const std::vector<DetectionSort>& detections,
                std::vector<std::pair<int, int>>& matches, 
                std::vector<int>& unmatched_tracks_idx, 
                std::vector<int>& unmatched_detections_idx);
 
-    void initiate_track(const Detection& detection);
+    void initiate_track(const DetectionSort& detection);
 
 private:
     TrackerOptions m_options;
