@@ -1,14 +1,16 @@
 #include "engine.h"
+#include "tic_toc.h"
 
-Engine::Engine(const int32_t maxBatchSize): m_maxBatchSize(maxBatchSize){
-    m_buffers.clear();
-    m_buffers.resize(2);
+Engine::Engine(){
 }
 Engine::~Engine() {
-    cudaFree(m_outputDevice);
 }
 
 bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
+
+    // get precision and batch size
+    uint32_t precision;
+    getPrecisionAndBatchSize(trtModelPath, precision, m_maxBatchSize);
 
     // Read the serialized model from disk
     if (!Util::doesFileExist(trtModelPath)) {
@@ -66,10 +68,16 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
     m_inputDims3 = {tensorShapeInput.d[1], tensorShapeInput.d[2], tensorShapeInput.d[3]};
     m_inputBatchSize = tensorShapeInput.d[0];   
 
+    // get input size
     m_inputSize = 1;
     for (int j = 0; j < 3; ++j) {
         m_inputSize *= m_inputDims3.d[j];
     }
+
+    // allocate input device memory
+    float* inputDevice;
+    Util::checkCudaErrorCode(cudaMalloc(&inputDevice, m_maxBatchSize * m_inputSize * sizeof(float)));
+    m_inputDevicePtr.reset(inputDevice);
 
     m_outputDims = m_engine->getTensorShape(m_outputTensorName.c_str());
 
@@ -79,7 +87,9 @@ bool Engine::loadEngineNetwork(const std::string& trtModelPath) {
     }
 
     // allocate output device memory
-    Util::checkCudaErrorCode(cudaMalloc(&m_outputDevice, m_maxBatchSize * m_outputSize * sizeof(float)));
+    float* outputDevice;
+    Util::checkCudaErrorCode(cudaMalloc(&outputDevice, m_maxBatchSize * m_outputSize * sizeof(float)));
+    m_outputDevicePtr.reset(outputDevice);
 
     return true;
 }
@@ -118,28 +128,23 @@ bool Engine::runInference(const std::vector<float*> &inputs, std::vector<float*>
     int bindingIndex = m_engine->getBindingIndex(m_inputTensorName.c_str());
     m_context->setBindingDimensions(bindingIndex, inputDims);
 
-    // set input tensor
-    float* inputDevice;
-    Util::checkCudaErrorCode(cudaMalloc(&inputDevice, batchSize * m_inputSize * sizeof(float)));
-
-    // copy input data to device
-    for (int i = 0; i < batchSize; ++i) {
-        cudaMemcpy(inputDevice + i * m_inputSize, inputs[i], m_inputSize * sizeof(float), cudaMemcpyDeviceToDevice);
-    }
-
-    // binding output dimensions
-    m_buffers[0] = inputDevice;
-    m_buffers[1] = m_outputDevice;
-
     // Ensure all dynamic bindings have been defined.
     if (!m_context->allInputDimensionsSpecified()) {
         auto msg = "Error, not all required dimensions specified.";
         throw std::runtime_error(msg);
     }
 
+    // copy input data to device
+    for (int i = 0; i < batchSize; ++i) {
+        cudaMemcpy(m_inputDevicePtr.get() + i * m_inputSize, inputs[i], m_inputSize * sizeof(float), cudaMemcpyDeviceToDevice);
+    }
+
+    // store the input and output buffers
+    std::vector<float*> buffers{m_inputDevicePtr.get(), m_outputDevicePtr.get()};
+
     // Set the address of the input and output buffers
-    m_context->setTensorAddress(m_inputTensorName.c_str(), m_buffers[0]);
-    m_context->setTensorAddress(m_outputTensorName.c_str(), m_buffers[1]);
+    m_context->setTensorAddress(m_inputTensorName.c_str(), buffers[0]);
+    m_context->setTensorAddress(m_outputTensorName.c_str(), buffers[1]);
 
     // Create the cuda stream that will be used for inference
     cudaStream_t inferenceCudaStream;
@@ -153,13 +158,48 @@ bool Engine::runInference(const std::vector<float*> &inputs, std::vector<float*>
 
     // copy the outputs
     for (int i = 0; i < batchSize; ++i) {
-        cudaMemcpy(outputs[i], m_buffers[1] + i * m_outputSize, m_outputSize * sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(outputs[i], m_outputDevicePtr.get() + i * m_outputSize, m_outputSize * sizeof(float), cudaMemcpyDeviceToDevice);
     }
 
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
     Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
-    cudaFree(inputDevice);
 
     return true;
+}
+
+
+
+/**
+ * @brief Retrieves the precision and batch size from the given engine path.
+ * 
+ * This function searches for specific substrings in the engine path to extract the precision and batch size values.
+ * The precision value is extracted from the substring following "fp", and the batch size value is extracted from the substring following ".batch".
+ * 
+ * @param enginePath The path of the engine file.
+ * @param precision Reference to a uint32_t variable to store the precision value.
+ * @param batchSize Reference to a uint32_t variable to store the batch size value.
+ */
+void Engine::getPrecisionAndBatchSize(const std::string& enginePath, uint32_t& precision, uint32_t& batchSize) {
+
+    // 找到 "fp" 的位置
+    size_t fp_pos = enginePath.find("fp");
+    if (fp_pos == std::string::npos) {
+        std::cerr << "No 'fp' found in the path" << std::endl;
+    }
+    
+    // 找到 ".batch" 的位置
+    size_t batch_pos = enginePath.find("batch");
+    if (batch_pos == std::string::npos) {
+        std::cerr << "No '.batch' found in the path" << std::endl;
+    }
+    
+    // 提取 "fp" 后的数字部分
+    std::string _precision = enginePath.substr(fp_pos+2, 2);
+    
+    // 提取 "batch" 后的数字部分
+    std::string _batch_size = enginePath.substr(batch_pos+5, 2); // 5 是 "batch" 的长度
+
+    precision = std::stoi(_precision);
+    batchSize = std::stoi(_batch_size);
 }

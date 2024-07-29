@@ -1,13 +1,16 @@
-#ifndef DETECTION_INFER_H
-#define DETECTION_INFER_H
+// detection.hpp
+#ifndef DETECTION_HPP
+#define DETECTION_HPP
+
 #include <Eigen/Dense>
 
-class DetectionInfer {
+class Detection
+{
 public:
     /**
      * @brief Default constructor for the Detection class.
      */
-    DetectionInfer() = default;
+    Detection() = default;
 
     /**
      * @brief Constructor for the Detection class.
@@ -15,19 +18,8 @@ public:
      * @param confidence The confidence score of the detection.
      * @param feature The feature vector associated with the detection (optional).
      */
-    DetectionInfer(const Eigen::Vector4f& tlwh, const float& confidence, const int& cls, const Eigen::VectorXf& feature = Eigen::VectorXf())
+    Detection(const Eigen::Vector4f& tlwh, const float& confidence, const int& cls, const Eigen::VectorXf& feature = Eigen::VectorXf())
         : m_tlwh(tlwh), m_confidence(confidence), m_cls(cls), m_feature(feature) {}
-
-    /**
-     * @brief Sets the features of the object.
-     *
-     * This function sets the features of the object using the provided Eigen::VectorXf.
-     *
-     * @param feature The Eigen::VectorXf containing the features to be set.
-     */
-    void setFeature(const Eigen::VectorXf& feature) {
-        m_feature = feature;
-    }
 
     /**
      * @brief Converts the detection bounding box coordinates to top-left and bottom-right coordinates.
@@ -66,9 +58,9 @@ public:
      */
     Eigen::Vector4f get_tlwh() const { return m_tlwh; }
 
-    float getConfidence() const { return m_confidence; }
-    int getCls() const { return m_cls; }
-    Eigen::VectorXf getFeature() const { return m_feature; }
+    float get_confidence() const { return m_confidence; }
+    int get_cls() const { return m_cls; }
+    Eigen::VectorXf get_feature() const { return m_feature; }
 
 private:
     Eigen::Vector4f m_tlwh;          // Top-left corner, width, and height of the detection bounding box
@@ -77,4 +69,4 @@ private:
     Eigen::VectorXf m_feature;       // Feature vector associated with the detection
 };
 
-#endif // DETECTION_INFER_H
+#endif // DETECTION_HPP

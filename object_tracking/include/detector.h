@@ -1,7 +1,9 @@
 #ifndef DETECTOR_H
 #define DETECTOR_H
+
 // cuda runtime
 #include <cuda_runtime.h>
+#include "cuda_deleter.h"
 
 // Tensorrt
 #include "engine.h"
@@ -89,28 +91,27 @@ private:
     int m_nAnchor;
 
     // GPU buffer for preprocessing
-    unsigned char* m_gpuImgBGR;
-    unsigned char* m_gpuImgBGRA;
-    unsigned char* m_gpuResizedImgBGR;
-    unsigned char* m_gpuResizedImgRGB;
-    unsigned char* m_gpuResizedImgBlob;
-    float* m_gpuNormalizedInput;
+    std::unique_ptr<unsigned char, CudaDeleter> m_cudaImgBGRPtr = nullptr;
+    std::unique_ptr<unsigned char, CudaDeleter> m_cudaImgBGRAPtr = nullptr;
+    std::unique_ptr<unsigned char, CudaDeleter> m_cudaResizedImgBGRPtr = nullptr;
+    std::unique_ptr<unsigned char, CudaDeleter> m_cudaResizedImgRGBPtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_cudaNormalizedInputPtr = nullptr;
 
-    // [feature_vector_gpu] [84*8400]
-    float* m_modelOutput;
-    // [8400*80]
-    float* m_modelOutputScores;
+    // model output [84*8400]
+    std::unique_ptr<float, CudaDeleter> m_cudaModelOutputPtr = nullptr;
+    // model output scores part [8400*80]
+    std::unique_ptr<float, CudaDeleter> m_cudaModelOutputScoresPtr = nullptr;
 
-    // detections
-    float* m_centerX;
-    float* m_centerY;
-    float* m_width;
-    float* m_height;
-    float* m_score;
-    int* m_classId;
-    int* m_keep;
-    int* m_keepIndex;
-    int* m_numberOfKeep;
+    // detections result
+    std::unique_ptr<float, CudaDeleter> m_cudaCenterXPtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_cudaCenterYPtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_cudaWidthPtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_cudaHeightPtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_cudaScorePtr = nullptr;
+    std::unique_ptr<int, CudaDeleter> m_cudaClassIdPtr = nullptr;
+    std::unique_ptr<int, CudaDeleter> m_cudaKeepPtr = nullptr;
+    std::unique_ptr<int, CudaDeleter> m_cudaKeepIdxPtr = nullptr;
+    std::unique_ptr<int, CudaDeleter> m_cudaNumberOfKeepPtr = nullptr;
 };
 
 #endif // DETECTOR_H

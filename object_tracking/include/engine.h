@@ -4,6 +4,7 @@
 // cuda runtime
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include "cuda_deleter.h"
 
 // TensorRT
 #include "NvInfer.h"
@@ -22,10 +23,20 @@ class Logger : public nvinfer1::ILogger {
     }
 };
 
+// // deleter for unique_ptr
+// struct CudaDeleter {
+//     void operator()(float* ptr) const {
+//         cudaFree(ptr);
+//     }
+//     void operator()(unsigned char* ptr) const {
+//         cudaFree(ptr);
+//     }
+// };
+
 // Assume model is one input and one output
 class Engine {
 public:
-    Engine(const int32_t maxBatchSize);
+    Engine();
     ~Engine();
 
     // Load a TensorRT engine file from disk into memory
@@ -36,14 +47,16 @@ public:
     // Output format [batch][feature_vector_gpu]       ex. [1, 84*8400]
     bool runInference(const std::vector<float*> &inputs, std::vector<float*> &outputs);
 
-    const int &getInputBatchSize() const { return m_inputBatchSize; };
+    const uint32_t &getMaxBatchSize() const { return m_maxBatchSize; };
     const nvinfer1::Dims3 &getInputDims() const { return m_inputDims3; };
     const nvinfer1::Dims &getOutputDims() const { return m_outputDims; };
 
 private:
+    void getPrecisionAndBatchSize(const std::string& enginePath, uint32_t& precision, uint32_t& batchSize);
+
     // GPU buffers
-    std::vector<void *> m_buffers;
-    float* m_outputDevice = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_inputDevicePtr = nullptr;
+    std::unique_ptr<float, CudaDeleter> m_outputDevicePtr = nullptr;
 
     // input and output name
     std::string m_inputTensorName;
@@ -64,7 +77,7 @@ private:
     std::unique_ptr<nvinfer1::IExecutionContext> m_context = nullptr;
 
     // Max batch size
-    const int32_t m_maxBatchSize;
+    uint32_t m_maxBatchSize;
     Logger m_logger;
 };
 
