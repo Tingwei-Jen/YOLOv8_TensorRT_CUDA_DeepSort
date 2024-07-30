@@ -31,14 +31,14 @@ sudo docker run -it --rm --gpus all -p 5000:5000 \
 detection:yolo
 ```
 
-## Generate Yolov8 onnx model and convert to tensorRT
+## Generate Yolov8 ONNX model and convert to TensorRT engine
 First, generate the YOLOv8 ONNX model by running the following commands:
 ```bash
 cd yolov8
 python export.py
 ```
 
-## Generate extractor onnx model and training for it.
+## Generate extractor ONNX model and training for it.
 
 Follow the steps in the [README.md](reid/README.md) of 'reid' folder to generate and train the extractor ONNX model.
 
@@ -69,6 +69,8 @@ Use the following command to run the object tracking module, replacing [detector
 ```
 
 3. **Visulize the result**
+
+    Generate video for tracking result.
 
 ```python
 usage: visualize.py [--tracker_result_path]

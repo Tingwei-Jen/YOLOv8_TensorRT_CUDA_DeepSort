@@ -16,5 +16,5 @@ yolov8/yolov8n.pt
 
 # object tracking
 object_tracking/build/
-object_tracking/result/img_det/
-object_tracking/result/tracker_result.txt
+object_tracking/tool/img_det/
+tracker_result.txt
