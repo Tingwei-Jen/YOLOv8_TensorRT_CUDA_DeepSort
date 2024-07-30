@@ -31,7 +31,14 @@ sudo docker run -it --rm --gpus all -p 5000:5000 \
 detection:yolo
 ```
 
-## Generate detector and extractor TensorRT engine model
+## Models
+| Model        | size<br><sup>(pixels)  | Speed<br><sup>GTX1080ti TensorRT<br>(ms)   |  params<br><sup>(M) |
+| ------------ | ---------------------- | ------------------------------------------ | ------------------- |
+| YOLOv8m      | 640                    | xx                                         |  25.9               |
+| Resnet18     | 128x64                 | xx                                         |  11.7               |
+
+
+## Generate TensorRT engine model
 ### Generate Yolov8 ONNX model
     
 First, generate the YOLOv8 ONNX model by running the following commands:
