@@ -37,8 +37,8 @@ detection:yolo
 ## Models
 | Model     | Input Size<br><sup>(pixels)  | Batch Size |Speed<br><sup>GTX1080ti<br>TensorRT<br>(ms) |  params<br><sup>(M) |
 | ----------| ---------------------------- | ---------- |------------------------------------------- | ------------------- |
-| YOLOv8m   | 640x640                      |  1         |10.5                                        |  25.9               |
-| Resnet18  | 128x64                       |  64        |3.0                                         |  11.7               |
+| YOLOv8m   | 640x640                      |  1         |8.86                                        |  25.9               |
+| Resnet18  | 128x64                       |  64        |11.08                                       |  11.7               |
 
 ## Generate TensorRT engine model
 ### Generate Yolov8 ONNX model
