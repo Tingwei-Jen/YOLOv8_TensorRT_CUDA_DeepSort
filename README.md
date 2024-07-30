@@ -92,7 +92,7 @@ usage: visualize.py [--tracker_result_path]
 ## Speed
 
 Host: intel i7  
-Device: GTX1080ti
+Device: GTX1080ti  
 Image Size: 1920x1080
 
 | Functions                | Platform | Average Speed<br><sup>(ms) |
