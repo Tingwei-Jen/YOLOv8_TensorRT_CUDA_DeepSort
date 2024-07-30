@@ -66,4 +66,8 @@ void imageScaling(unsigned char *imageScaledData, unsigned char *imageData, int 
 	// call kernel
 	createResizedImage<<<gridSize, blockSize>>>(imageScaledData, imageData, scaledWidth, scaleFactorX, scaleFactorY, texObj);
     cudaDeviceSynchronize();
+
+	// free memory
+	if(cu_array !=NULL)
+		cudaFreeArray(cu_array);
 }
