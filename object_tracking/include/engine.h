@@ -23,16 +23,6 @@ class Logger : public nvinfer1::ILogger {
     }
 };
 
-// // deleter for unique_ptr
-// struct CudaDeleter {
-//     void operator()(float* ptr) const {
-//         cudaFree(ptr);
-//     }
-//     void operator()(unsigned char* ptr) const {
-//         cudaFree(ptr);
-//     }
-// };
-
 // Assume model is one input and one output
 class Engine {
 public:
