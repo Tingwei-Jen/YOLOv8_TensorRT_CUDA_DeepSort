@@ -1,4 +1,4 @@
-# YOLOv8_CUDA_DeepSort
+# YOLOv8_TensorRT_CUDA_DeepSort
 
 YOLOv8 is used for object detection, while CUDA is utilized for image preprocessing and postprocessing after the detection inference. All model inference is performed using TensorRT and implemented in a C++ environment.
 
@@ -31,18 +31,22 @@ sudo docker run -it --rm --gpus all -p 5000:5000 \
 detection:yolo
 ```
 
-## Generate Yolov8 ONNX model and convert to TensorRT engine
+## Generate detector and extractor TensorRT engine model
+### Generate Yolov8 ONNX model
+    
 First, generate the YOLOv8 ONNX model by running the following commands:
+Change model name in export.py for other Yolov8 model.
+
 ```bash
 cd yolov8
 python export.py
 ```
 
-## Generate extractor ONNX model and training for it.
+### Training extractor model and generate ONNX model
 
 Follow the steps in the [README.md](reid/README.md) of 'reid' folder to generate and train the extractor ONNX model.
 
-## Convert ONNX model to TensortRT engine.
+### Convert ONNX model to TensortRT engine.
 
 Follow the steps in the [README.md](convert_onnx_to_engine_cpp/README.md) of the convert_onnx_to_engine_cpp folder to convert the ONNX model to a TensorRT engine.
 
