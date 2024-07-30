@@ -2,7 +2,8 @@
 
 YOLOv8 is used for object detection, while CUDA is utilized for image preprocessing and postprocessing after the detection inference. All model inference is performed using TensorRT and implemented in a C++ environment.
 
-[![YOLOv8m_TensorRT_CUDA_DeepSort](https://img.youtube.com/vi/ut4S8CK516Y/default.jpg)](https://youtu.be/ut4S8CK516Y)
+[Watch the video here](https://youtu.be/ut4S8CK516Y)  
+![YOLOv8m_TensorRT_CUDA_DeepSort](https://img.youtube.com/vi/ut4S8CK516Y/default.jpg)
 
 ## Docker
 ### Build Docker container
