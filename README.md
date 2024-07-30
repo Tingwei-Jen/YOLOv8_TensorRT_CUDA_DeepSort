@@ -34,8 +34,8 @@ detection:yolo
 ## Models
 | Model        | size<br><sup>(pixels)  | Speed<br><sup>GTX1080ti<br>TensorRT<br>(ms) |  params<br><sup>(M) |
 | ------------ | ---------------------- | ------------------------------------------- | ------------------- |
-| YOLOv8m      | 640                    | xx                                          |  25.9               |
-| Resnet18     | 128x64                 | xx                                          |  11.7               |
+| YOLOv8m      | 640                    | 10.5                                        |  25.9               |
+| Resnet18     | 128x64                 | 3.0                                         |  11.7               |
 
 ## Generate TensorRT engine model
 ### Generate Yolov8 ONNX model
@@ -88,12 +88,17 @@ usage: visualize.py [--tracker_result_path]
 ```
 
 ## Speed
-| Function                 | Platform | Speed<br><sup>(ms) |
+
+Host: intel i7  
+Device: GTX1080ti
+
+| Functions                | Platform | Speed<br><sup>(ms) |
 | ------------------------ | -------- | ------------------ |
-| Read image               | Host     |
-| Detector Preprocessing   | Device   |              
-| Detector Inference       | Device   |
-| Detector Postprocessing  | Device   |            
-| Extractor Preprocessing  | Device   |
-| Extractor Inference      | Device   |
-| Tracking                 | Host     |
+| Read image               | Host     | 8.88               |
+| Detector Preprocessing   | Device   | 1.04               |
+| Detector Inference       | Device   | 10.52              |
+| Detector Postprocessing  | Device   | 1.75               |           
+| Extractor Preprocessing  | Device   | 2.83               |
+| Extractor Inference      | Device   | 2.97               |
+| Tracking                 | Host     | 70.62              |
+| Total                    |          | 99.09              |
