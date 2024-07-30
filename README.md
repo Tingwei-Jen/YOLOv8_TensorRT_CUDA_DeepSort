@@ -93,8 +93,9 @@ usage: visualize.py [--tracker_result_path]
 
 Host: intel i7  
 Device: GTX1080ti
+Image Size: 1920x1080
 
-| Functions                | Platform | Speed<br><sup>(ms) |
+| Functions                | Platform | Average Speed<br><sup>(ms) |
 | ------------------------ | -------- | ------------------ |
 | Read image               | Host     | 8.88               |
 | Detector Preprocessing   | Device   | 1.04               |
