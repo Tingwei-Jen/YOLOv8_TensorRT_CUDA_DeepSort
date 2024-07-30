@@ -86,3 +86,14 @@ Use the following command to run the object tracking module, replacing [detector
 usage: visualize.py [--tracker_result_path]
                     [--output_folder_path]
 ```
+
+## Speed
+| Function                 | Platform | Speed<br><sup>(ms) |
+| ------------------------ | -------- | ------------------ |
+| Read image               | Host     |
+| Detector Preprocessing   | Device   |              
+| Detector Inference       | Device   |
+| Detector Postprocessing  | Device   |            
+| Extractor Preprocessing  | Device   |
+| Extractor Inference      | Device   |
+| Tracking                 | Host     |
