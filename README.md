@@ -32,11 +32,10 @@ detection:yolo
 ```
 
 ## Models
-| Model        | size<br><sup>(pixels)  | Speed<br><sup>GTX1080ti TensorRT<br>(ms)   |  params<br><sup>(M) |
-| ------------ | ---------------------- | ------------------------------------------ | ------------------- |
-| YOLOv8m      | 640                    | xx                                         |  25.9               |
-| Resnet18     | 128x64                 | xx                                         |  11.7               |
-
+| Model        | size<br><sup>(pixels)  | Speed<br><sup>GTX1080ti<br>TensorRT<br>(ms) |  params<br><sup>(M) |
+| ------------ | ---------------------- | ------------------------------------------- | ------------------- |
+| YOLOv8m      | 640                    | xx                                          |  25.9               |
+| Resnet18     | 128x64                 | xx                                          |  11.7               |
 
 ## Generate TensorRT engine model
 ### Generate Yolov8 ONNX model
