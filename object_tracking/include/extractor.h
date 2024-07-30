@@ -15,6 +15,10 @@
 // opencv
 #include <opencv2/opencv.hpp>
 
+// TIMER
+#include "timer.h"
+#include "statistics.h"
+
 class Extractor{
 public:
     /**
@@ -26,8 +30,9 @@ public:
      * @brief Constructor for the Extractor class.
      * @param trtModelPath The path to the TRT model.
      * @param config The configuration for the extractor.
+     * @param statistics The statistics object to store the duration of each function.
      */
-    Extractor(const std::string& trtModelPath, const int& sourceImgWidth, const int& sourceImgHeight);
+    Extractor(const std::string& trtModelPath, const int& sourceImgWidth, const int& sourceImgHeight, Statistics& statistics);
 
     /**
      * @brief Destructor for the Extractor class.
@@ -72,6 +77,9 @@ private:
 
     // feature dimension
     int m_nDimension;
+
+    // statistics for timer
+    Statistics& m_statistics;
 };
 
 #endif // EXTRATOR_H

@@ -17,6 +17,10 @@
 // opencv
 #include <opencv2/opencv.hpp>
 
+// TIMER
+#include "timer.h"
+#include "statistics.h"
+
 struct DetectorConfig {
     // source image width and height
     int imgWidth = 1280;
@@ -25,20 +29,8 @@ struct DetectorConfig {
     float probabilityThreshold = 0.25f;
     // Non-maximum suppression threshold
     float nmsThreshold = 0.65f;
-    // Class thresholds (default are COCO classes)
-    std::vector<std::string> classNames = {
-        "person",         "bicycle",    "car",           "motorcycle",    "airplane",     "bus",           "train",
-        "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",    "parking meter", "bench",
-        "bird",           "cat",        "dog",           "horse",         "sheep",        "cow",           "elephant",
-        "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",     "handbag",       "tie",
-        "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball",  "kite",          "baseball bat",
-        "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",       "wine glass",    "cup",
-        "fork",           "knife",      "spoon",         "bowl",          "banana",       "apple",         "sandwich",
-        "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",        "donut",         "cake",
-        "chair",          "couch",      "potted plant",  "bed",           "dining table", "toilet",        "tv",
-        "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",   "microwave",     "oven",
-        "toaster",        "sink",       "refrigerator",  "book",          "clock",        "vase",          "scissors",
-        "teddy bear",     "hair drier", "toothbrush"};
+    // number of classes
+    int numberOfClasses = 80;
 };
 
 class Detector{
@@ -52,8 +44,9 @@ public:
      * @brief Constructor for the Detector class.
      * @param trtModelPath The path to the TRT model.
      * @param config The configuration for the detector.
+     * @param statistics The statistics object to store the duration of each function.
      */
-    Detector(const std::string& trtModelPath, const DetectorConfig& config);
+    Detector(const std::string& trtModelPath, const DetectorConfig& config, Statistics& statistics);
 
     /**
      * @brief Destructor for the Detector class.
@@ -69,7 +62,10 @@ public:
 
 private:
     void preprocessing(const cv::Mat& cpuImg);
+    void inference();
     void postprocessing();
+    std::vector<DetectionInfer> outputDets();
+
     void checkBoundry(float &tlx, float &tly, float &width, float &height);
 
     // tensorrt engine
@@ -112,6 +108,9 @@ private:
     std::unique_ptr<int, CudaDeleter> m_cudaKeepPtr = nullptr;
     std::unique_ptr<int, CudaDeleter> m_cudaKeepIdxPtr = nullptr;
     std::unique_ptr<int, CudaDeleter> m_cudaNumberOfKeepPtr = nullptr;
+
+    // statistics for timer
+    Statistics& m_statistics;
 };
 
 #endif // DETECTOR_H

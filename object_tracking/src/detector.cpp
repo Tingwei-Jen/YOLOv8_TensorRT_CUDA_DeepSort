@@ -1,8 +1,10 @@
 #include "detector.h"
-#include "tic_toc.h"
 
-Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config)
-    : PROBABILITY_THRESHOLD(config.probabilityThreshold), NMS_THRESHOLD(config.nmsThreshold), NUM_CLASSES(config.classNames.size()) {
+Detector::Detector(const std::string& trtModelPath, const DetectorConfig& config, Statistics& statistics)
+    : PROBABILITY_THRESHOLD(config.probabilityThreshold), 
+      NMS_THRESHOLD(config.nmsThreshold), 
+      NUM_CLASSES(config.numberOfClasses),
+      m_statistics(statistics) {
 
     std::cout << "Detector constructor" << std::endl;
 
@@ -106,15 +108,98 @@ std::vector<DetectionInfer> Detector::detect(const cv::Mat& cpuImg) {
     preprocessing(cpuImg);
 
     // inference
+    inference();
+
+    // postprocessing
+    postprocessing();
+
+    // output detections
+    std::vector<DetectionInfer> detections = outputDets();
+    
+    return detections;
+}
+
+void Detector::preprocessing(const cv::Mat& cpuImg) {
+
+    Timer timer("Detector::preprocessing", [this](const std::string& functionName, long long duration){
+        m_statistics.addDuration(functionName, duration);
+    });
+
+    // step1. upload the image to GPU memory
+    cudaMemcpy(m_cudaImgBGRPtr.get(), cpuImg.data, m_cpuImgWidth * m_cpuImgHeight * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+
+    // step2. convert BGR to BGRA
+    cvtColorBGR2BGRA(m_cudaImgBGRAPtr.get(), m_cudaImgBGRPtr.get(), m_cpuImgWidth, m_cpuImgHeight);
+
+    // step3. resize
+    imageScaling(m_cudaResizedImgBGRPtr.get(), m_cudaImgBGRAPtr.get(), m_scaleImgWidth, m_scaleImgHeight, m_cpuImgWidth, m_cpuImgHeight);
+
+    // step4. bgr to rgb 
+    cvtColorBGR2RGB(m_cudaResizedImgRGBPtr.get(), m_cudaResizedImgBGRPtr.get(), m_scaleImgWidth, m_scaleImgHeight);
+
+    // step5. blob and normalize
+    blob_normalize(m_cudaNormalizedInputPtr.get(), m_cudaResizedImgRGBPtr.get(), 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, m_scaleImgWidth, m_scaleImgHeight);
+}
+
+void Detector::inference() {
+
+    Timer timer("Detector::inference", [this](const std::string& functionName, long long duration){
+        m_statistics.addDuration(functionName, duration);
+    });
+
+    // inference
     std::vector<float*> input{m_cudaNormalizedInputPtr.get()};
     std::vector<float*> output{m_cudaModelOutputPtr.get()};
     auto succ = m_trtEngine->runInference(input, output);
     if (!succ) {
         throw std::runtime_error("Error: Unable to run inference.");
     }
+}
 
-    // postprocessing
-    postprocessing();
+void Detector::postprocessing() {
+
+    Timer timer("Detector::postprocessing", [this](const std::string& functionName, long long duration){
+        m_statistics.addDuration(functionName, duration);
+    });
+
+    // copy box center and size
+    cudaMemcpy(m_cudaCenterXPtr.get(), m_cudaModelOutputPtr.get(), m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_cudaCenterYPtr.get(), m_cudaModelOutputPtr.get() + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_cudaWidthPtr.get(), m_cudaModelOutputPtr.get() + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_cudaHeightPtr.get(), m_cudaModelOutputPtr.get() + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
+
+    // transpose 80*8400 to 8400*80
+    matrixTranspose(m_cudaModelOutputScoresPtr.get(), m_cudaModelOutputPtr.get() + 4 * m_nAnchor, m_nAnchor, m_nDimension - 4);
+
+    // find max scores and class id
+    findMaxAndIndex(m_cudaScorePtr.get(), m_cudaClassIdPtr.get(), m_cudaModelOutputScoresPtr.get(), NUM_CLASSES, m_nAnchor);
+
+    // scale and thresholding
+    float scaleFactorX = (float)m_cpuImgWidth / m_scaleImgWidth;
+    float scaleFactorY = (float)m_cpuImgHeight / m_scaleImgHeight;
+    recoverScaleAndScoreThresholding(
+        m_cudaCenterXPtr.get(), m_cudaCenterYPtr.get(), 
+        m_cudaWidthPtr.get(), m_cudaHeightPtr.get(), 
+        m_cudaScorePtr.get(), m_cudaKeepPtr.get(),
+        m_nAnchor, scaleFactorX, scaleFactorY, 
+        PROBABILITY_THRESHOLD);
+
+    // NMS
+    nms(m_cudaKeepPtr.get(), m_cudaCenterXPtr.get(), m_cudaCenterYPtr.get(), 
+        m_cudaWidthPtr.get(), m_cudaHeightPtr.get(), m_cudaScorePtr.get(), 
+        m_nAnchor, NMS_THRESHOLD);
+
+    // get keep index
+    // reset keep index
+    cudaMemset(m_cudaNumberOfKeepPtr.get(), 0, sizeof(int));
+    getKeepIndex(m_cudaKeepIdxPtr.get(), m_cudaNumberOfKeepPtr.get(), m_cudaKeepPtr.get(), m_nAnchor);
+}
+
+std::vector<DetectionInfer> Detector::outputDets() {
+
+    Timer timer("Detector::outputDets", [this](const std::string& functionName, long long duration){
+        m_statistics.addDuration(functionName, duration);
+    });
 
     // get number of keep
     int h_numberOfKeep;
@@ -158,61 +243,8 @@ std::vector<DetectionInfer> Detector::detect(const cv::Mat& cpuImg) {
 
     // Free the memory allocated for h_keepIndex
     free(h_keepIndex);
-    
+
     return detections;
-}
-
-void Detector::preprocessing(const cv::Mat& cpuImg) {
-
-    // step1. upload the image to GPU memory
-    cudaMemcpy(m_cudaImgBGRPtr.get(), cpuImg.data, m_cpuImgWidth * m_cpuImgHeight * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
-
-    // step2. convert BGR to BGRA
-    cvtColorBGR2BGRA(m_cudaImgBGRAPtr.get(), m_cudaImgBGRPtr.get(), m_cpuImgWidth, m_cpuImgHeight);
-
-    // step3. resize
-    imageScaling(m_cudaResizedImgBGRPtr.get(), m_cudaImgBGRAPtr.get(), m_scaleImgWidth, m_scaleImgHeight, m_cpuImgWidth, m_cpuImgHeight);
-
-    // step4. bgr to rgb 
-    cvtColorBGR2RGB(m_cudaResizedImgRGBPtr.get(), m_cudaResizedImgBGRPtr.get(), m_scaleImgWidth, m_scaleImgHeight);
-
-    // step5. blob and normalize
-    blob_normalize(m_cudaNormalizedInputPtr.get(), m_cudaResizedImgRGBPtr.get(), 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, m_scaleImgWidth, m_scaleImgHeight);
-}
-
-void Detector::postprocessing() {
-
-    // copy box center and size
-    cudaMemcpy(m_cudaCenterXPtr.get(), m_cudaModelOutputPtr.get(), m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_cudaCenterYPtr.get(), m_cudaModelOutputPtr.get() + m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_cudaWidthPtr.get(), m_cudaModelOutputPtr.get() + 2 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_cudaHeightPtr.get(), m_cudaModelOutputPtr.get() + 3 * m_nAnchor, m_nAnchor * sizeof(float), cudaMemcpyDeviceToDevice);
-
-    // transpose 80*8400 to 8400*80
-    matrixTranspose(m_cudaModelOutputScoresPtr.get(), m_cudaModelOutputPtr.get() + 4 * m_nAnchor, m_nAnchor, m_nDimension - 4);
-
-    // find max scores and class id
-    findMaxAndIndex(m_cudaScorePtr.get(), m_cudaClassIdPtr.get(), m_cudaModelOutputScoresPtr.get(), NUM_CLASSES, m_nAnchor);
-
-    // scale and thresholding
-    float scaleFactorX = (float)m_cpuImgWidth / m_scaleImgWidth;
-    float scaleFactorY = (float)m_cpuImgHeight / m_scaleImgHeight;
-    recoverScaleAndScoreThresholding(
-        m_cudaCenterXPtr.get(), m_cudaCenterYPtr.get(), 
-        m_cudaWidthPtr.get(), m_cudaHeightPtr.get(), 
-        m_cudaScorePtr.get(), m_cudaKeepPtr.get(),
-        m_nAnchor, scaleFactorX, scaleFactorY, 
-        PROBABILITY_THRESHOLD);
-
-    // NMS
-    nms(m_cudaKeepPtr.get(), m_cudaCenterXPtr.get(), m_cudaCenterYPtr.get(), 
-        m_cudaWidthPtr.get(), m_cudaHeightPtr.get(), m_cudaScorePtr.get(), 
-        m_nAnchor, NMS_THRESHOLD);
-
-    // get keep index
-    // reset keep index
-    cudaMemset(m_cudaNumberOfKeepPtr.get(), 0, sizeof(int));
-    getKeepIndex(m_cudaKeepIdxPtr.get(), m_cudaNumberOfKeepPtr.get(), m_cudaKeepPtr.get(), m_nAnchor);
 }
 
 void Detector::checkBoundry(float &tlx, float &tly, float &width, float &height) {

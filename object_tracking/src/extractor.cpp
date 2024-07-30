@@ -1,16 +1,14 @@
 #include "extractor.h"
-#include "tic_toc.h"
 
-Extractor::Extractor(const std::string& trtModelPath, const int& sourceImgWidth, const int& sourceImgHeight) {
+Extractor::Extractor(const std::string& trtModelPath, const int& sourceImgWidth, const int& sourceImgHeight, Statistics& statistics)
+    : m_cpuImgWidth(sourceImgWidth),
+      m_cpuImgHeight(sourceImgHeight), 
+      m_statistics(statistics) {
 
     std::cout << "Extractor constructor" << std::endl;
 
     // engine
     m_trtEngine = std::make_unique<Engine>();
-
-    // Set the image width and height
-    m_cpuImgWidth = sourceImgWidth;
-    m_cpuImgHeight = sourceImgHeight;
 
     // load engine
     bool succ = m_trtEngine->loadEngineNetwork(trtModelPath);
@@ -85,6 +83,10 @@ Extractor::~Extractor() {
 
 bool Extractor::extract(const cv::Mat& cpuImg, std::vector<DetectionInfer>& detections) {
 
+    Timer timer("Extractor::extract", [this](const std::string& functionName, long long duration){
+        m_statistics.addDuration(functionName, duration);
+    });
+
     // upload the image to GPU memory
     cudaMemcpy(m_cudaImgBGRPtr.get(), cpuImg.data, m_cpuImgWidth * m_cpuImgHeight * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
 
@@ -95,7 +97,7 @@ bool Extractor::extract(const cv::Mat& cpuImg, std::vector<DetectionInfer>& dete
     int numOfBoxes = detections.size();
     int numOfBatch = (numOfBoxes + m_maxBatchSize - 1) / m_maxBatchSize;
 
-    for (int i = 0; i < numOfBatch; ++i) {       
+    for (int i = 0; i < numOfBatch; ++i) {
         // get current batch size
         int currentBatchSize  = std::min(m_maxBatchSize, numOfBoxes - i * m_maxBatchSize);
         std::vector<float*> v_batchInputs(currentBatchSize);
@@ -131,12 +133,18 @@ bool Extractor::extract(const cv::Mat& cpuImg, std::vector<DetectionInfer>& dete
             // free
             cudaFree(cropImage);
         }
+        
+        {
+            Timer timer("Extractor::inference", [this](const std::string& functionName, long long duration){
+                m_statistics.addDuration(functionName, duration);
+            });
 
-        // inference
-        auto succ = m_trtEngine->runInference(v_batchInputs, m_v_cudaModelOutputs);
-        if (!succ) {
-            throw std::runtime_error("Error: Unable to run inference.");
-            return false;
+            // inference
+            auto succ = m_trtEngine->runInference(v_batchInputs, m_v_cudaModelOutputs);
+            if (!succ) {
+                throw std::runtime_error("Error: Unable to run inference.");
+                return false;
+            }
         }
 
         for (int j = 0; j < currentBatchSize ; ++j) {

@@ -4,7 +4,7 @@
 #include "detector.h"
 #include "extractor.h"
 #include "tracker.h"
-#include "tic_toc.h"
+#include "statistics.h"
 
 std::vector<std::string> getImagePaths(const std::string& folderPath) {
     std::vector<std::string> imagePaths;
@@ -64,6 +64,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     
+    // Read the first image to get the image dimensions
     auto testImg = cv::imread(imagePaths[0]);
     
     if (testImg.empty()) {
@@ -78,35 +79,46 @@ int main(int argc, char* argv[])
     DetectorConfig config;
     config.imgWidth = imgWidth;
     config.imgHeight = imgHeight;
-    config.probabilityThreshold = 0.65;
+    config.probabilityThreshold = 0.5;
     config.nmsThreshold = 0.5;
-    Detector detector(detectorEnginePath, config);
+    Statistics statistics;
+    Detector detector(detectorEnginePath, config, statistics);
 
     // declare extractor
-    Extractor extractor(extractorEnginePath, imgWidth, imgHeight);
-
+    Extractor extractor(extractorEnginePath, imgWidth, imgHeight, statistics);
 
     // declare tracker
     TrackerOptions trackerOptions;
-    trackerOptions.budget = 10;
+    trackerOptions.budget = 50;
     trackerOptions.cos_method = true;
     trackerOptions.matching_threshold = 0.15;
     trackerOptions.max_iou_distance = 0.7;
-    trackerOptions.max_age = 20;
+    trackerOptions.max_age = 30;
     trackerOptions.n_init = 3;
     Tracker tracker(trackerOptions);
 
     std::vector<TrackerResult> trackingResults;
 
     for (int i = 0; i < nImages; i++) {
+        Timer timer("Pipeline", [&statistics](const std::string& functionName, long long duration){
+            statistics.addDuration(functionName, duration);
+        });
+
         std::string imagePath = imagePaths[i];
         std::cout << "Processing image: " << imagePath << std::endl;
 
         // Read the input image
-        auto cpuImg = cv::imread(imagePath);
-        if (cpuImg.empty()) {
-            std::cerr << "Unable to read image at path: " << imagePath << std::endl;
-            continue;
+        cv::Mat cpuImg;
+        {
+            Timer timer("cv::imread", [&statistics](const std::string& functionName, long long duration){
+                statistics.addDuration(functionName, duration);
+            });
+
+            cpuImg = cv::imread(imagePath);
+            if (cpuImg.empty()) {
+                std::cerr << "Unable to read image at path: " << imagePath << std::endl;
+                continue;
+            }
         }
 
         // detect
@@ -115,7 +127,7 @@ int main(int argc, char* argv[])
         // Extract features
         extractor.extract(cpuImg, detections);
 
-        // Tracker update
+        // detection to deepsort format
         std::vector<DetectionSort> detections_deepsort;
 
         for (auto det: detections) {
@@ -129,10 +141,17 @@ int main(int argc, char* argv[])
             detections_deepsort.push_back(det_sort);
         }
 
-        tracker.predict();
-        tracker.update(detections_deepsort);
+        // Update tracker
+        {
+            Timer timer("Tracker::update", [&statistics](const std::string& functionName, long long duration){
+                statistics.addDuration(functionName, duration);
+            });
+            tracker.predict();
+            tracker.update(detections_deepsort);
+        }
+        
+        // output tracking results
         std::vector<Track> tracks = tracker.getTracks();
-
         for (auto track: tracks) {
             if (!track.is_confirmed() || track.time_since_update() > 1) {
                 continue;
@@ -145,6 +164,20 @@ int main(int argc, char* argv[])
             res.tlwh = track.to_tlwh();
             trackingResults.push_back(res);
         }
+    }
+
+    // Print the duration statistics
+    auto durations = statistics.getDurations();
+    for (const auto& entry : durations) {
+        const auto& functionName = entry.first;
+        const auto& times = entry.second;
+        long long total = 0;
+        for (auto time : times) {
+            total += time;
+        }
+        long long average = times.empty() ? 0 : total / times.size();
+        std::cout << "Function " << functionName << " called " << times.size() << " times. "
+                  << "Average duration: " << average << " microseconds.\n";
     }
 
     // Write the tracking results to a file
@@ -160,5 +193,26 @@ int main(int argc, char* argv[])
     }
     outfile.close();
 
+    // Write the duration results to a file
+    std::string durationResultOutputFilePath = trackerResultOutputFolderPath + "duration_result.txt";
+    std::cout << "Writing duration results to: " << durationResultOutputFilePath << std::endl;
+    std::ofstream durationOutfile(durationResultOutputFilePath);
+    durationOutfile << "img_path, Pipeline, cv::imread, Detector::preprocessing, Detector::inference, Detector::postprocessing, Detector::outputDets, Extractor::extract, Extractor::inference, Tracker::update" << std::endl;
+    int nData = durations["Pipeline"].size();
+
+    for (int i = 0; i < nData; i++) {
+        durationOutfile << imagePaths[i] << ",";
+        durationOutfile << durations["Pipeline"][i] << ",";
+        durationOutfile << durations["cv::imread"][i] << ",";
+        durationOutfile << durations["Detector::preprocessing"][i] << ",";
+        durationOutfile << durations["Detector::inference"][i] << ",";
+        durationOutfile << durations["Detector::postprocessing"][i] << ",";
+        durationOutfile << durations["Detector::outputDets"][i] << ",";
+        durationOutfile << durations["Extractor::extract"][i] << ",";
+        durationOutfile << durations["Extractor::inference"][i] << ",";
+        durationOutfile << durations["Tracker::update"][i] << std::endl;
+    }
+
+    durationOutfile.close();
     return 0;
 }
